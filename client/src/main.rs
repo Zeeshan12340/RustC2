@@ -87,7 +87,7 @@ fn main() {
         match TcpStream::connect(format!("{}:{}", host, port)) {
             Ok(mut stream) =>  {
                 println!("Successfully connected to the server");
-                let outinfo = format!("||ACSINFO||{}||{}", username, os);
+                let outinfo = format!("||ACSINFO||{}||{}\r\n", username, os);
                 stream.write(outinfo.as_bytes()).unwrap();
                 loop {
                     let mut buffer = [0; 1024];

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use base64::{Engine as _, engine::general_purpose};
-use colored::Colorize;
+// use colored::Colorize;
 use std::io::{BufReader, Read, Write};
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -141,58 +141,58 @@ pub async fn handle_ldap(active_connections: &Arc<Mutex<HashMap<String, Connecti
     cmdout = cmdout.replace("||LDAPQUERY||", "");
     Ok(cmdout.trim().to_string())
 }
-pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, raw_connection: bool) -> (String, String) {
-    let mut rbuffer = [0; 1024];
-    let mut wbuffer = String::new();
-    let mut stream_lock = stream.lock().await;
-    let tcp_stream: &mut tokio::net::TcpStream = &mut *stream_lock;
-    let username: String;
-    let os: String;
+// pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, raw_connection: bool) -> () {
+    // let mut rbuffer = [0; 1024];
+    // let mut wbuffer = String::new();
+    // let mut stream_lock = stream.lock().await;
+    // let tcp_stream: &mut tokio::net::TcpStream = &mut *stream_lock;
+    // let username: String;
+    // let os: String;
 
-    if raw_connection {
-        wbuffer += "whoami\n";
+    // if raw_connection {
+    //     wbuffer += "whoami\n";
     
-        AsyncWriteExt::write_all(tcp_stream, wbuffer.as_bytes()).await.expect("Error writing to stream");
-        let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
-        match result {
-            Ok(Ok(n)) => {
-                username = String::from_utf8(rbuffer[..n].to_vec())
-                .expect("Error converting to utf-8").trim().to_string();
-                if username.contains("\\") {
-                    os = "windows".to_string();
-                } else {
-                    os = "linux".to_string();
-                }
-                (username, os)
-            }
-            Ok(Err(err)) => {
-                panic!("Error reading from stream: {:?}", err);
-            }
-            Err(_) => {
-                panic!("Read operation timed out");
-            }
-        }
-    } else {
-        let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
-        match result {
-            Ok(Ok(n)) => {
-                let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
-                let parts: Vec<&str> = data.split("||").collect();
-                if parts[1] == "ACSINFO" {
-                    return (parts[2].to_string(), parts[3].to_string());
-                } else {
-                    return ("".to_string(), "".to_string());
-                }
-            }
-            Ok(Err(err)) => {
-                panic!("Error reading from stream: {:?}", err);
-            }
-            Err(_) => {
-                panic!("Read operation timed out");
-            }
-        }
-    }
-}
+    //     AsyncWriteExt::write_all(tcp_stream, wbuffer.as_bytes()).await.expect("Error writing to stream");
+    //     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
+    //     match result {
+    //         Ok(Ok(n)) => {
+    //             username = String::from_utf8(rbuffer[..n].to_vec())
+    //             .expect("Error converting to utf-8").trim().to_string();
+    //             if username.contains("\\") {
+    //                 os = "windows".to_string();
+    //             } else {
+    //                 os = "linux".to_string();
+    //             }
+    //             (username, os)
+    //         }
+    //         Ok(Err(err)) => {
+    //             panic!("Error reading from stream: {:?}", err);
+    //         }
+    //         Err(_) => {
+    //             panic!("Read operation timed out");
+    //         }
+    //     }
+    // } else {
+    //     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
+    //     match result {
+    //         Ok(Ok(n)) => {
+    //             let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
+    //             let parts: Vec<&str> = data.split("||").collect();
+    //             if parts[1] == "ACSINFO" {
+    //                 return (parts[2].to_string(), parts[3].to_string());
+    //             } else {
+    //                 return ("".to_string(), "".to_string());
+    //             }
+    //         }
+    //         Ok(Err(err)) => {
+    //             panic!("Error reading from stream: {:?}", err);
+    //         }
+    //         Err(_) => {
+    //             panic!("Read operation timed out");
+    //         }
+    //     }
+    // }
+// }
 // pub fn handle_guiconnect(active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>) -> Result<(), io::Error> {
 //     std::thread::spawn(move || {
 //         let listener = std::net::TcpListener::bind("0.0.0.0:9090").unwrap();
@@ -365,12 +365,12 @@ pub async fn handle_pivot(
 } */
 pub async fn handle_list(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>) -> Vec<String> {
     let mut list = vec![String::new()];
-    list.push("Active connections:\n".green().to_string());
+    list.push("Active connections:\n".to_string());
     for (hostname, con) in active_connections.lock().await.iter() {
         if con.is_pivot {
-            list.push(format!("[+] PIVOT: {} (ID {}) username: {}, OS: {}\n", hostname, con.id, con.username, con.os).blue().to_string());
+            list.push(format!("[+] PIVOT: {} (ID {}) username: {}, OS: {}\n", hostname, con.id, con.username, con.os).to_string());
         } else {
-            list.push(format!("[+] {} (ID {}) username: {}, OS: {}\n", hostname, con.id, con.username, con.os).blue().to_string());
+            list.push(format!("[+] {} (ID {}) username: {}, OS: {}\n", hostname, con.id, con.username, con.os).to_string());
         }
     }
     list
