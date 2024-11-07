@@ -44,7 +44,7 @@ pub async fn handle_importpsh(active_connections: &Arc<Mutex<HashMap<String, Con
     let encoded_script = general_purpose::STANDARD.encode(&buffer);
 
     let import_cmd = "||IMPORTSCRIPT|| ".to_owned();
-    let (_, connection_info) = active_connections.iter().nth(id - 1).unwrap();
+    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
     let is_pivot = connection_info.is_pivot;
     let command = if is_pivot {
@@ -82,7 +82,7 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
     if id > active_connections.len() {
         return Err("Invalid ID".to_string());
     }
-    let (_, connection_info) = active_connections.iter().nth(id - 1).unwrap();
+    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
     let command = format!("||RUNSCRIPT|| {}", function_name);
 
@@ -117,7 +117,7 @@ pub async fn handle_ldap(active_connections: &Arc<Mutex<HashMap<String, Connecti
     if id > active_connections.len() {
         return Err("Invalid ID".to_string());
     }
-    let (_, connection_info) = active_connections.iter().nth(id - 1).unwrap();
+    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
     let is_pivot = connection_info.is_pivot;
     let command = if is_pivot {
@@ -141,58 +141,59 @@ pub async fn handle_ldap(active_connections: &Arc<Mutex<HashMap<String, Connecti
     cmdout = cmdout.replace("||LDAPQUERY||", "");
     Ok(cmdout.trim().to_string())
 }
-// pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, raw_connection: bool) -> () {
-    // let mut rbuffer = [0; 1024];
+pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, raw_connection: bool) -> (String, String) {
+    let mut rbuffer = [0; 1024];
     // let mut wbuffer = String::new();
-    // let mut stream_lock = stream.lock().await;
-    // let tcp_stream: &mut tokio::net::TcpStream = &mut *stream_lock;
+    let mut stream_lock = stream.lock().await;
+    let tcp_stream: &mut tokio::net::TcpStream = &mut *stream_lock;
     // let username: String;
     // let os: String;
 
-    // if raw_connection {
-    //     wbuffer += "whoami\n";
+    if raw_connection {
+        // wbuffer += "whoami\n";
     
-    //     AsyncWriteExt::write_all(tcp_stream, wbuffer.as_bytes()).await.expect("Error writing to stream");
-    //     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
-    //     match result {
-    //         Ok(Ok(n)) => {
-    //             username = String::from_utf8(rbuffer[..n].to_vec())
-    //             .expect("Error converting to utf-8").trim().to_string();
-    //             if username.contains("\\") {
-    //                 os = "windows".to_string();
-    //             } else {
-    //                 os = "linux".to_string();
-    //             }
-    //             (username, os)
-    //         }
-    //         Ok(Err(err)) => {
-    //             panic!("Error reading from stream: {:?}", err);
-    //         }
-    //         Err(_) => {
-    //             panic!("Read operation timed out");
-    //         }
-    //     }
-    // } else {
-    //     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
-    //     match result {
-    //         Ok(Ok(n)) => {
-    //             let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
-    //             let parts: Vec<&str> = data.split("||").collect();
-    //             if parts[1] == "ACSINFO" {
-    //                 return (parts[2].to_string(), parts[3].to_string());
-    //             } else {
-    //                 return ("".to_string(), "".to_string());
-    //             }
-    //         }
-    //         Ok(Err(err)) => {
-    //             panic!("Error reading from stream: {:?}", err);
-    //         }
-    //         Err(_) => {
-    //             panic!("Read operation timed out");
-    //         }
-    //     }
-    // }
-// }
+        // AsyncWriteExt::write_all(tcp_stream, wbuffer.as_bytes()).await.expect("Error writing to stream");
+        // let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
+        // match result {
+        //     Ok(Ok(n)) => {
+        //         username = String::from_utf8(rbuffer[..n].to_vec())
+        //         .expect("Error converting to utf-8").trim().to_string();
+        //         if username.contains("\\") {
+        //             os = "windows".to_string();
+        //         } else {
+        //             os = "linux".to_string();
+        //         }
+        //         (username, os)
+        //     }
+        //     Ok(Err(err)) => {
+        //         panic!("Error reading from stream: {:?}", err);
+        //     }
+        //     Err(_) => {
+        //         panic!("Read operation timed out");
+        //     }
+        // }
+        ("test".to_string(), "test".to_string())
+    } else {
+        let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
+        match result {
+            Ok(Ok(n)) => {
+                let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
+                let parts: Vec<&str> = data.split("||").collect();
+                if parts[1] == "ACSINFO" {
+                    return (parts[2].to_string(), parts[3].to_string());
+                } else {
+                    return ("".to_string(), "".to_string());
+                }
+            }
+            Ok(Err(err)) => {
+                panic!("Error reading from stream: {:?}", err);
+            }
+            Err(_) => {
+                panic!("Read operation timed out");
+            }
+        }
+    }
+}
 // pub fn handle_guiconnect(active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>) -> Result<(), io::Error> {
 //     std::thread::spawn(move || {
 //         let listener = std::net::TcpListener::bind("0.0.0.0:9090").unwrap();

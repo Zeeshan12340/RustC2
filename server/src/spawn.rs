@@ -33,30 +33,34 @@ pub async fn handle_spawn(
     let stream = connection_info.stream.clone();
     let mut stream_lock = stream.lock().await;
     let (mut reader, mut writer) = stream_lock.split();
-    if raw_connection {
-        let mut input = String::new();
-        let mut output = [0; 1024];
-        let mut myreader = tokio::io::BufReader::new(tokio::io::stdin());
-        println!("Spawned new shell on remote ID: {}. Type 'exit' to return.", id);
-        loop {
-            print!("$: ");
-            std::io::stdout().flush().unwrap();
-            select! {
-                Ok(_) = myreader.read_line(&mut input) => {
-                    if input.contains("exit") {
-                        break;
-                    }
-                    writer.write_all(input.as_bytes()).await?;
-                    input.clear();
+    let mut prefix = String::new();
+    let mut input = String::new();
+    let mut output = [0; 1024];
+    let mut myreader = tokio::io::BufReader::new(tokio::io::stdin());
+    
+    if !raw_connection { 
+        prefix = "||PSHEXEC|| ".to_string();
+     }
+    
+    println!("Spawned new shell on remote ID: {}. Type 'exit' to return.", id);
+    loop {
+        print!("$: ");
+        std::io::stdout().flush().unwrap();
+        select! {
+            Ok(_) = myreader.read_line(&mut input) => {
+                if input.contains("exit") {
+                    break;
                 }
-                Ok(_) = reader.read(&mut output) => {
-                    println!("\r{}", String::from_utf8_lossy(&output).to_string());
-                    output = [0; 1024];
-                }
+                writer.write_all(format!("{}{}", prefix, input).as_bytes()).await?;
+                input.clear();
+            }
+            Ok(_) = reader.read(&mut output) => {
+                let mut cmdout = String::from_utf8_lossy(&output).to_string();
+                cmdout = cmdout.replace("||cmd||", "");
+                println!("\r{}", cmdout);
+                output = [0; 1024];
             }
         }
-    } else {
-        println!("TODO!");
     }
     Ok(format!("Exited interactive shell on {}", id))
 }

