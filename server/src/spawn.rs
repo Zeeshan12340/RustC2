@@ -1,7 +1,6 @@
 use tokio::{
     select,
     io::{AsyncReadExt, AsyncWriteExt, AsyncBufReadExt},
-    // net::tcp::{OwnedReadHalf, OwnedWriteHalf},
     sync::
         Mutex,
 };
@@ -10,6 +9,7 @@ use std::{
     collections::HashMap,
     sync::Arc,
 };
+use simple_crypt::{encrypt, decrypt};
 use crate::utils::ConnectionInfo;
 
 pub async fn handle_spawn(
@@ -36,6 +36,8 @@ pub async fn handle_spawn(
     let mut prefix = String::new();
     let mut input = String::new();
     let mut output = [0; 1024];
+    let mut encrypted_input ;
+    let mut decrypted_output;
     let mut myreader = tokio::io::BufReader::new(tokio::io::stdin());
     
     if !raw_connection { 
@@ -51,11 +53,13 @@ pub async fn handle_spawn(
                 if input.contains("exit") {
                     break;
                 }
-                writer.write_all(format!("{}{}", prefix, input).as_bytes()).await?;
+                encrypted_input = encrypt(format!("{}{}", prefix, input).as_bytes(), b"shared secret").expect("Failed to encrypt");
+                writer.write_all(&encrypted_input).await?;
                 input.clear();
             }
             Ok(_) = reader.read(&mut output) => {
-                let mut cmdout = String::from_utf8_lossy(&output).to_string();
+                decrypted_output = decrypt(&output, b"shared secret").expect("Failed to decrypt");
+                let mut cmdout = String::from_utf8_lossy(&decrypted_output).to_string();
                 cmdout = cmdout.replace("||cmd||", "");
                 println!("\r{}", cmdout);
                 output = [0; 1024];

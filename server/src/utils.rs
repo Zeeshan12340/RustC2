@@ -139,7 +139,7 @@ pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>, r
     } else {
         let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
         match result {
-            Ok(Ok(n)) => {
+            Ok(Ok(_)) => {
                 // let data = String::from_utf8(rbuffer[..n].to_vec()).expect("Error converting to utf-8");
                 let data = decrypt(&rbuffer, b"shared secret").expect("Failed to decrypt");
                 let data_string = String::from_utf8(data).expect("Failed to convert to String");

@@ -24,7 +24,7 @@ Available commands in C2 prompt:
   kill <ID>                        Kills the beacon on the host
   exit                             Close all connections and exit(ctrl+d)
 ```
-[This](https://github.com/frostb1ten/UnfinishedC2/) has been used as a starting point but the code has been modified significantly. To build the C2, simply run `cargo build --release` in the parent folder and the binaries will be available in `target/release/`.
+To build the C2, simply run `cargo build --release` in the parent folder and the binaries will be available in `target/release/`.
 The usage is pretty straightforward.
 
 P.S: Any issues and PRs are welcome.
