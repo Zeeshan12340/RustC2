@@ -6,20 +6,20 @@ use std::{thread,
     collections::HashMap};
 use clap::{Command, arg};
 use simple_crypt::{decrypt, encrypt};
-// use daemonize::Daemonize;
+use daemonize::Daemonize;
 mod utils;
 
 use utils::ImportedScript;
 fn main() {
-    // let daemonize = Daemonize::new()
-    //     .pid_file("/tmp/rustc2.pid") // Specify the PID file
-    //     .chown_pid_file(true) // Change the ownership of the PID file
-    //     .working_directory("/tmp"); // Change the working directory
+    let daemonize = Daemonize::new()
+        .pid_file("/tmp/rustc2.pid")
+        .chown_pid_file(true)
+        .working_directory("/tmp");
 
-    // match daemonize.start() {
-    //     Ok(_) => println!("Daemonized successfully"),
-    //     Err(e) => eprintln!("Error, {}", e),
-    // }
+    match daemonize.start() {
+        Ok(_) => println!("Daemonized successfully"),
+        Err(e) => eprintln!("Error, {}", e),
+    }
 
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();

