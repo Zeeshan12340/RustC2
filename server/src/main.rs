@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let active_connections_clone = Arc::clone(&active_connections);
         let hostname = sockaddr.to_string();
 
-        tokio::spawn(handle_connection(active_connections_clone, hostname, stream, raw_connection.lock().await.clone()));
+        tokio::spawn(handle_connection(active_connections_clone, hostname, stream));
     }
 
     Ok(())
@@ -214,13 +214,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn handle_connection(
     active_connections: Arc<Mutex<HashMap<String,ConnectionInfo>>>,
     hostname: String,
-    stream: TcpStream,
-    raw_connection: bool) {
+    stream: TcpStream) {
     println!("{}", "\n[+] Connection recieved!");
     let mut stream = Arc::new(Mutex::new(stream));
     let hostname_clone = hostname.clone();
 
-    let (username, os) = utils::parse_client_info(&mut stream, raw_connection).await;
+    let (username, os) = utils::parse_client_info(&mut stream).await;
     println!("username: {}, os: {}", username, os);
     
     let id = {

