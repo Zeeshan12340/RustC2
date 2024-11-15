@@ -147,7 +147,7 @@ pub fn handle_upload(stream: &mut TcpStream, command: &str) -> Result<(), Box<dy
     let parts: Vec<&str> = command.split(" ").collect();
     let destination = parts[1];
     let mut file = File::create(destination)?;
-    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
+    // stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     let mut buffer = [0; 1024];
     let mut encoded_data = String::new();
     loop {

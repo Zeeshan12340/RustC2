@@ -216,12 +216,15 @@ pub async fn handle_upload(active_connections: &Arc<Mutex<HashMap<String, Connec
     let upload_cmd = "||UPLOAD|| ".to_owned() + &destination;
     let (_,connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
-    let combined_command = format!("{}{} |!!done!!|", upload_cmd, encoded_file.trim());
-    let encrypted_command = encrypt(combined_command.as_bytes(), b"shared secret").expect("Failed to encrypt");
-
-    stream.lock().await
-        .write(&encrypted_command).await
-        .expect("Error writing to stream");
+    let upload_cmd = encrypt(upload_cmd.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    stream.lock().await.write(&upload_cmd).await.expect("Error writing to stream");
+    
+    let combined_command = format!("{} |!!done!!|", encoded_file.trim());
+    for chunk in combined_command.as_bytes().chunks(956) {
+        let encrypted_command = encrypt(chunk, b"shared secret").expect("Failed to encrypt");
+        stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
+    }
+    
     stream.lock().await.flush().await.expect("Error flushing stream");
     let _ = match stream.lock().await.read(&mut buffer).await {
         Ok(n) => n,
