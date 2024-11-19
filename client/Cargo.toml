@@ -16,6 +16,10 @@ libc = "0.2.139"
 regex = "1.7.1"
 x25519-dalek = "2.0"
 rand = "0.8"
+sysinfo = "0.32.0"
 
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["debugapi"] }
