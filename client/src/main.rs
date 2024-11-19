@@ -1,5 +1,4 @@
 use clap::{arg, Command};
-use daemonize::Daemonize;
 use simple_crypt::{decrypt, encrypt};
 use std::{
     collections::HashMap,
@@ -14,6 +13,22 @@ use rand::rngs::OsRng;
 mod utils;
 
 use utils::ImportedScript;
+
+#[cfg(unix)]
+use daemonize::Daemonize;
+#[cfg(unix)]
+fn daemonize_process() {
+     let daemonize = Daemonize::new()
+     .pid_file("/tmp/rustc2.pid")
+     .chown_pid_file(true)
+     .working_directory("/tmp");
+
+     match daemonize.start() {
+         Ok(_) => println!("Daemonized successfully"),
+         Err(e) => eprintln!("Error, {}", e),
+     }
+}
+
 fn main() {
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
@@ -35,15 +50,8 @@ fn main() {
     }
 
     if matches.get_flag("daemonize") {
-        let daemonize = Daemonize::new()
-            .pid_file("/tmp/rustc2.pid")
-            .chown_pid_file(true)
-            .working_directory("/tmp");
-
-        match daemonize.start() {
-            Ok(_) => println!("Daemonized successfully"),
-            Err(e) => eprintln!("Error, {}", e),
-        }
+        #[cfg(unix)]
+        daemonize_process();
     }
 
     let username = std::env::var("USERNAME").expect("username variable not set");

