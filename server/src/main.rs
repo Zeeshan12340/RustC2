@@ -267,7 +267,7 @@ pub async fn handle_connection(
     // heartbeat check task for each connection
     tokio::spawn(async move {
         let data = [0; 1];
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
         loop {
             let _ = interval.tick().await;
             match stream.lock().await.try_write(&data) {

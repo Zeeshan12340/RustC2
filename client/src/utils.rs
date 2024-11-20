@@ -21,15 +21,12 @@ pub struct ImportedScript {
 
 pub fn handle_import_psh(
     stream: &mut TcpStream,
-    _command: &str,
     imported_scripts: &mut HashMap<String, ImportedScript>,
     shared_secret: &[u8; 32]
 ) -> Result<(), Box<dyn Error>> {
-    let mut buffer = [0; 65535];
+
+    let mut buffer = [0; 1024];
     let mut encoded_data = String::new();
-
-    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
-
     loop {
         let _ = stream.read(&mut buffer)?;
         let data = String::from_utf8(decrypt(&buffer, shared_secret)?)?;
@@ -38,11 +35,10 @@ pub fn handle_import_psh(
             break;
         }
     }
-    encoded_data = encoded_data
+    let encoded_data = encoded_data
         .replace("\r", "")
         .replace("\n", "")
         .replace(" |!!done!!|", "");
-
     let decoded_data = general_purpose::STANDARD.decode(&encoded_data)?;
     let script_content = String::from_utf8(decoded_data)?;
 
@@ -62,11 +58,9 @@ pub fn handle_import_psh(
 
     imported_scripts.insert(script_content, imported_script);
 
-    for function_name in function_names {
-        let success_msg = format!("Successfully imported {}\n", function_name);
-        let encrypted_data = encrypt(success_msg.as_bytes(), shared_secret)?;
-        stream.write(&encrypted_data)?;
-    }
+    let success_msg = format!("Successfully imported {}\n", function_names.join(", "));
+    let encrypted_data = encrypt(success_msg.as_bytes(), shared_secret)?;
+    stream.write(&encrypted_data).unwrap();
     stream.flush()?;
 
     Ok(())
@@ -149,7 +143,6 @@ pub fn handle_upload(stream: &mut TcpStream, command: &str, shared_secret: &[u8;
     let parts: Vec<&str> = command.split(" ").collect();
     let destination = parts[1];
     let mut file = File::create(destination)?;
-    // stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     let mut buffer = [0; 1024];
     let mut encoded_data = String::new();
     loop {
