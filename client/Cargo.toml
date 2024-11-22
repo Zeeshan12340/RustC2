@@ -22,4 +22,4 @@ sysinfo = "0.32.0"
 daemonize = "0.5"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["debugapi"] }
+winapi = { version = "0.3", features = ["debugapi","memoryapi"] }
