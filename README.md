@@ -1,3 +1,5 @@
+**Only for educational or research purposes.**
+
 This is a simple C2 made in Rust and has very basic features listed below:
 
 ```bash
@@ -16,7 +18,10 @@ Available commands in C2 prompt:
   list                      List active connections
   cmd <ID> <command>        Send a cmd command to a host
   psh <ID> <command>        Send a PowerShell command to a host
-  spawn <id>            Start an interactive shell
+  spawn <id>                Start an interactive shell
+  import-psh <ID> <file>    Import a PowerShell script into the client
+  run-psh <ID> <Function>   Run a function from the imported scripts
+  inject <ID> <Path> <args> Execute an EXE/DLL in memory
 
   upload <ID> <file> <dest>        Upload a file to a host
   download <ID> <file> <dest>      Download a file from a host
