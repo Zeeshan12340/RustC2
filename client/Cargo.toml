@@ -25,8 +25,11 @@ daemonize = "0.5"
 winapi = { version = "0.3", features = ["debugapi","memoryapi"] }
 ntapi = "0.4.1"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies.windows]
-version = "0.54.0"
+version = "0.*"
 features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemInformation",
@@ -36,5 +39,8 @@ features = [
     "Win32_System_WindowsProgramming",
     "Win32_System_Threading",
     "Win32_System_Kernel",
-    "Win32_Security"
+    "Win32_Security",
+    "Win32_Foundation",
+    "Win32_System_SystemServices",
+    "Win32_UI_WindowsAndMessaging"
 ]
