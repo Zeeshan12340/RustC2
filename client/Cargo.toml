@@ -25,7 +25,7 @@ daemonize = "0.5"
 winapi = { version = "0.3", features = ["debugapi","memoryapi"] }
 ntapi = "0.4.1"
 
-[target.'cfg(windows)'.lib]
+[lib]
 crate-type = ["cdylib"]
 
 [dependencies.windows]

@@ -171,7 +171,7 @@ impl PE {
             if self.is_dll {
                 let entry_point = address.offset((*self.nt_header).OptionalHeader.AddressOfEntryPoint as isize); 
                 let func_dll = transmute::<_, DllMain>(entry_point);
-                func_dll(HINSTANCE(address as isize), DLL_PROCESS_ATTACH, null_mut());
+                let _ = func_dll(HINSTANCE(address as isize), DLL_PROCESS_ATTACH, null_mut());
 
                 if !export_address.is_null() {
                     let htread = CreateThread(
@@ -192,7 +192,7 @@ impl PE {
                 let func = transmute::<_, Main>(entry_point);
 
                 std::thread::spawn(move || {
-                    func();
+                    let _ = func();
                 });
             }
             Ok(())

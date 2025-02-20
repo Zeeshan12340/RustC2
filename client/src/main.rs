@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use clap::{arg, Command};
 use simple_crypt::{decrypt, encrypt};
 use std::{
