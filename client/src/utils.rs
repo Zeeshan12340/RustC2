@@ -12,6 +12,7 @@ use std::{
     time::Duration,
     u8,
 };
+use xcap::Monitor;
 
 #[cfg(windows)]
 use std::{ffi::c_void, arch::asm};
@@ -374,4 +375,27 @@ unsafe fn __readfsdword(offset: u32) -> u32 {
         options(nostack, pure, readonly),
     );
     output
+}
+
+fn normalized(filename: &str) -> String {
+    filename
+        .replace("|", "")
+        .replace("\\", "")
+        .replace(":", "")
+        .replace("/", "")
+        .replace(" ", "")
+}
+
+pub fn handle_screenshot() -> String {
+    let monitor = &Monitor::all().unwrap()[0];
+
+    let image = monitor.capture_image().unwrap();
+
+    // save in /tmp on linux and C:\Window\Temp on windows
+    #[cfg(windows)]
+    image.save(format!("C:\\Windows\\Temp\\screenshot-{}.png", normalized(monitor.name()))).unwrap();
+    #[cfg(target_os = "linux")]
+    image.save(format!("/tmp/screenshot-{}.png", normalized(monitor.name()))).unwrap();
+
+    return monitor.name().to_string()
 }

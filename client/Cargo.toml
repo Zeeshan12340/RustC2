@@ -17,6 +17,7 @@ regex = "1.7.1"
 x25519-dalek = "2.0"
 rand = "0.8"
 sysinfo = "0.32.0"
+xcap = "0.3.2"
 
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.5"

