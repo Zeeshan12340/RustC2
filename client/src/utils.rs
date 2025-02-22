@@ -20,9 +20,11 @@ use std::{ffi::c_void, arch::asm};
 use ntapi::ntpebteb::{PEB, TEB};
 #[cfg(windows)]
 use windows::Win32::{
-    Foundation::{BOOL, HINSTANCE},
+    Foundation::HINSTANCE,
     System::Kernel::NT_TIB
 };
+#[cfg(windows)]
+use winapi::shared::minwindef::BOOL;
 
 pub struct ImportedScript {
     content: String,
@@ -377,16 +379,17 @@ unsafe fn __readfsdword(offset: u32) -> u32 {
     output
 }
 
-fn normalized(filename: &str) -> String {
-    filename
-        .replace("|", "")
-        .replace("\\", "")
-        .replace(":", "")
-        .replace("/", "")
-        .replace(" ", "")
-}
+#[allow(dead_code)]
+pub fn handle_screenshot() {
+    fn normalized(filename: &str) -> String {
+        filename
+            .replace("|", "")
+            .replace("\\", "")
+            .replace(":", "")
+            .replace("/", "")
+            .replace(" ", "")
+    }
 
-pub fn handle_screenshot() -> String {
     let monitor = &Monitor::all().unwrap()[0];
 
     let image = monitor.capture_image().unwrap();
@@ -396,6 +399,4 @@ pub fn handle_screenshot() -> String {
     image.save(format!("C:\\Windows\\Temp\\screenshot-{}.png", normalized(monitor.name()))).unwrap();
     #[cfg(target_os = "linux")]
     image.save(format!("/tmp/screenshot-{}.png", normalized(monitor.name()))).unwrap();
-
-    return monitor.name().to_string()
 }

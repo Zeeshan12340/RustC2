@@ -147,7 +147,7 @@ impl PE {
             ) };
             let status = unsafe { RtlAddFunctionTable(func_entries, address as u64) };
 
-            if !status.as_bool() {
+            if !status {
                 return Err("[!] Failed to call RtlAddFunctionTable".to_string());
             }   
         }
@@ -171,7 +171,7 @@ impl PE {
             if self.is_dll {
                 let entry_point = address.offset((*self.nt_header).OptionalHeader.AddressOfEntryPoint as isize); 
                 let func_dll = transmute::<_, DllMain>(entry_point);
-                let _ = func_dll(HINSTANCE(address as isize), DLL_PROCESS_ATTACH, null_mut());
+                let _ = func_dll(HINSTANCE(address), DLL_PROCESS_ATTACH, null_mut());
 
                 if !export_address.is_null() {
                     let htread = CreateThread(

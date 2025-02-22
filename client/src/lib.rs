@@ -31,7 +31,7 @@ extern "system" fn DllMain(dll_module: HINSTANCE, call_reason: u32, _: *mut ()) 
 
 fn detach() {
     unsafe {
-        MessageBoxA(HWND(0), s!("GOODBYE!"), s!("hello.dll"), Default::default());
+        MessageBoxA(Some(HWND(std::ptr::null_mut())), s!("GOODBYE!"), s!("hello.dll"), Default::default());
     }
 }
 
