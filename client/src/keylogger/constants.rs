@@ -25,4 +25,3 @@ pub const RID_INPUT: c_ulong = 0x10000003;
 
 //pub const RIM_TYPEHID: c_ulong = 2;
 pub const RIM_TYPEKEYBOARD: c_ulong = 1;
-pub const RIM_TYPEMOUSE: c_ulong = 0;

