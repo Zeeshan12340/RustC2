@@ -37,7 +37,7 @@ pub struct Point {
     pub y: c_long,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct WndClassEx {
     pub cb_size: c_uint,
