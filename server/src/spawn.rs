@@ -13,8 +13,7 @@ use tokio::{
 
 pub async fn handle_spawn(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str,
-    raw_connection: bool,
+    command: &str
 ) -> Result<String, Error> {
     let parts: Vec<&str> = command.splitn(2, ' ').collect();
     if parts.len() < 2 {
@@ -38,16 +37,12 @@ pub async fn handle_spawn(
     let stream = connection_info.stream.clone();
     let mut stream_lock = stream.lock().await;
     let (mut reader, mut writer) = stream_lock.split();
-    let mut prefix = String::new();
+    let prefix = "||PSHEXEC|| ".to_string();
     let mut input = String::new();
     let mut output = [0; 65535];
     let mut encrypted_input;
     let mut decrypted_output;
     let mut myreader = tokio::io::BufReader::new(tokio::io::stdin());
-
-    if !raw_connection {
-        prefix = "||PSHEXEC|| ".to_string();
-    }
 
     println!(
         "Spawned new shell on remote ID: {}. Type 'exit' to return.",

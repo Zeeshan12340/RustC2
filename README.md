@@ -8,10 +8,6 @@ Available commands in C2 prompt:
   <args> are required, [args] are optional
   help                  Show this menu
   shell <cmd>           Run a local shell command
-  revshell <lang> [ip] [port]  Generate a reverse shell in specified language
-       Example: `revshell bash`, `nc`,`curl`,`php`,`powershell`,`python`
-  connection <raw|client> Switches between a raw or c2 client connection
-       Client connection by default, toggles when run with no arguments.
   ------------------------------------------------------------- 
   Commands available when client is connected
   ------------------------------------------------------------- 
@@ -26,6 +22,8 @@ Available commands in C2 prompt:
   upload <ID> <file> <dest>        Upload a file to a host
   download <ID> <file> <dest>      Download a file from a host
   portscan <ID> <IP> <NUM1> <NUM2> Port scan a host
+  screenshot <ID>                  Take a screenshot
+  keylogger <ID> on/off            Keylogger
   kill <ID>                        Kills the beacon on the host
   exit                             Close all connections and exit(ctrl+d)
 ```
