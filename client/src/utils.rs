@@ -155,11 +155,11 @@ pub fn handle_upload(stream: &mut TcpStream, command: &str, shared_secret: &[u8;
     let parts: Vec<&str> = command.split(" ").collect();
     let destination = parts[1];
     let mut file = File::create(destination)?;
-    let mut buffer = [0; 1024];
+    let mut buffer = [0; 1092];
     let mut encoded_data = String::new();
     loop {
-        let _ = stream.read(&mut buffer)?;
-        let data = String::from_utf8(decrypt(&buffer, shared_secret)?)?;
+        stream.read(&mut buffer).unwrap();
+        let data = String::from_utf8(decrypt(&buffer, shared_secret).unwrap()).unwrap();
         encoded_data.push_str(&data);
         if data.contains("|!!done!!|") {
             break;

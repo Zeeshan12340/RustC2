@@ -374,7 +374,7 @@ pub async fn handle_upload(
         .expect("Error writing to stream");
 
     let combined_command = format!("{} |!!done!!|", encoded_file.trim());
-    for chunk in combined_command.as_bytes().chunks(956) {
+    for chunk in combined_command.as_bytes().chunks(1024) {
         let encrypted_command = encrypt(chunk, &shared_secret).expect("Failed to encrypt");
         stream
             .lock()

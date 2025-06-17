@@ -40,7 +40,7 @@ fn main() {
     #[cfg(windows)]
     sandbox::check_debugger();
 
-    let mut host = "192.168.183.1".to_string();
+    let mut host = "127.0.0.1".to_string();
     let mut port = "8080".to_string();
     let mut imported_scripts: HashMap<String, ImportedScript> = HashMap::new();
 
