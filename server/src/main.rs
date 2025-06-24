@@ -23,13 +23,13 @@ fn print_help() -> String {
     output.push_str("\n  ------------------------------------------------------------- \n");
     output.push_str("  Commands available when client is connected\n");
     output.push_str("  ------------------------------------------------------------- \n\n");
-    output.push_str("  list                      List active connections\n");
-    output.push_str("  cmd <ID> <command>        Send a cmd command to a host\n");
-    output.push_str("  psh <ID> <command>        Send a PowerShell command to a host\n");
-    output.push_str("  spawn <id>                Start an interactive shell\n\n");
-    output.push_str("  import-psh <ID> <file>    Import a PowerShell script into the client\n");
-    output.push_str("  run-psh <ID> <Function>   Run a function from the imported scripts\n\n");
-    output.push_str("  inject <ID> <Path> <args> Execute an EXE/DLL in memory\n\n");
+    output.push_str("  list                             List active connections\n");
+    output.push_str("  cmd <ID> <command>               Send a cmd command to a host\n");
+    output.push_str("  psh <ID> <command>               Send a PowerShell command to a host\n");
+    output.push_str("  spawn <id>                       Start an interactive shell\n\n");
+    output.push_str("  import-psh <ID> <file>           Import a PowerShell script into the client\n");
+    output.push_str("  run-psh <ID> <Function>          Run a function from the imported scripts\n\n");
+    output.push_str("  inject <ID> <Path> <args>        Execute an EXE/DLL in memory\n\n");
 
     output.push_str("  upload <ID> <file> <dest>        Upload a file to a host\n");
     output.push_str("  download <ID> <file> <dest>      Download a file from a host\n");
@@ -44,7 +44,7 @@ fn print_help() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("RustC2")
-    .version("0.1.0")
+    .version("0.2.0")
     .about(print_help())
     .arg(arg!(-p --port [PORT] "The port number used by the server (default 8080)"))
     .get_matches();

@@ -11,21 +11,21 @@ Available commands in C2 prompt:
   ------------------------------------------------------------- 
   Commands available when client is connected
   ------------------------------------------------------------- 
-  list                      List active connections
-  cmd <ID> <command>        Send a cmd command to a host
-  psh <ID> <command>        Send a PowerShell command to a host
-  spawn <id>                Start an interactive shell
-  import-psh <ID> <file>    Import a PowerShell script into the client
-  run-psh <ID> <Function>   Run a function from the imported scripts
-  inject <ID> <Path> <args> Execute an EXE/DLL in memory
+  list                              List active connections
+  cmd <ID> <command>                Send a cmd command to a host
+  psh <ID> <command>                Send a PowerShell command to a host
+  spawn <id>                        Start an interactive shell
+  import-psh <ID> <file>            Import a PowerShell script into the client
+  run-psh <ID> <Function>           Run a function from the imported scripts
+  inject <ID> <Path> <args>         Execute an EXE/DLL in memory
 
-  upload <ID> <file> <dest>        Upload a file to a host
-  download <ID> <file> <dest>      Download a file from a host
-  portscan <ID> <IP> <NUM1> <NUM2> Port scan a host
-  screenshot <ID>                  Take a screenshot
-  keylogger <ID> on/off            Keylogger
-  kill <ID>                        Kills the beacon on the host
-  exit                             Close all connections and exit(ctrl+d)
+  upload <ID> <file> <dest>         Upload a file to a host
+  download <ID> <file> <dest>       Download a file from a host
+  portscan <ID> <IP> <NUM1> <NUM2>  Port scan a host
+  screenshot <ID>                   Take a screenshot
+  keylogger <ID> on/off             Keylogger
+  kill <ID>                         Kills the beacon on the host
+  exit                              Close all connections and exit(ctrl+d)
 ```
 To build the C2, simply run `cargo build --release` in the parent folder and the binaries will be available in `target/release/`.
 The usage is pretty straightforward.
