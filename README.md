@@ -28,6 +28,24 @@ Available commands in C2 prompt:
   exit                              Close all connections and exit(ctrl+d)
 ```
 To build the C2, simply run `cargo build --release` in the parent folder and the binaries will be available in `target/release/`.
+
+**Cross-compiling for Windows on Ubuntu/Debian:**
+
+Install the MinGW-w64 toolchain and add the Rust Windows target:
+
+```bash
+sudo apt install mingw-w64
+rustup target add x86_64-pc-windows-gnu
+```
+
+Then build with:
+
+```bash
+cargo build --release --target x86_64-pc-windows-gnu
+```
+
+Binaries will be in `target/x86_64-pc-windows-gnu/release/`.
+
 The usage is pretty straightforward.
 
 P.S: Any issues and PRs are welcome.
