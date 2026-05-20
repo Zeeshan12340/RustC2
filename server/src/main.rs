@@ -231,7 +231,6 @@ pub async fn handle_connection(
                 id,
                 stream: stream.clone(),
                 hostname: hostname.clone(),
-                is_pivot: false,
                 username: username.clone(),
                 os: os.clone(),
                 shared_secret: *shared_secret.as_bytes(),

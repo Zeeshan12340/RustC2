@@ -31,7 +31,7 @@ pub async fn handle_spawn(
         return Err(Error::new(ErrorKind::InvalidInput, "Invalid ID"));
     }
 
-    let (_, connection_info) = active_connections.iter().nth(id).unwrap();
+    let connection_info = active_connections.values().find(|v| v.id == id).unwrap();
     let shared_secret = connection_info.shared_secret.clone();
 
     let stream = connection_info.stream.clone();

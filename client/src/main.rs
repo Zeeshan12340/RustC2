@@ -64,7 +64,9 @@ fn main() {
         daemonize_process();
     }
 
-    let username = std::env::var("USERNAME").expect("username variable not set");
+    let username = std::env::var("USERNAME")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "unknown".to_string());
     let os = std::env::consts::OS;
 
     loop {

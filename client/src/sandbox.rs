@@ -44,3 +44,20 @@ pub fn check_debugger() {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn sleep_evasion_completes_on_real_system() {
+        // A genuine 10ms sleep should not trigger the sandbox detection path
+        sleep_evasion(Duration::from_millis(10));
+    }
+
+    #[test]
+    fn sleep_evasion_zero_duration_completes() {
+        sleep_evasion(Duration::from_millis(0));
+    }
+}
+

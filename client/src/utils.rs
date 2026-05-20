@@ -378,6 +378,56 @@ unsafe fn __readfsdword(offset: u32) -> u32 {
     output
 }
 
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn base_relocation_entry_offset_masks_lower_12_bits() {
+        let entry = BaseRelocationEntry { data: 0x3ABC };
+        assert_eq!(entry.offset(), 0xABC);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn base_relocation_entry_type_extracts_upper_4_bits() {
+        let entry = BaseRelocationEntry { data: 0x3ABC };
+        assert_eq!(entry.type_(), 0x3);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn base_relocation_entry_type_zero_offset() {
+        let entry = BaseRelocationEntry { data: 0xA000 };
+        assert_eq!(entry.offset(), 0x000);
+        assert_eq!(entry.type_(), 0xA);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn image_snap_by_ordinal_high_bit_set() {
+        assert!(image_snap_by_ordinal(0x8000000000000001));
+        assert!(image_snap_by_ordinal(0x8000000000000000));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn image_snap_by_ordinal_high_bit_clear() {
+        assert!(!image_snap_by_ordinal(0x0000000000000001));
+        assert!(!image_snap_by_ordinal(0x7FFFFFFFFFFFFFFF));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn image_ordinal_extracts_low_16_bits() {
+        assert_eq!(image_ordinal(0x8000000000001234), 0x1234);
+        assert_eq!(image_ordinal(0x0000000000ABCDEF), 0xCDEF);
+        assert_eq!(image_ordinal(0xFFFFFFFFFFFF0042), 0x0042);
+    }
+}
+
 pub fn handle_screenshot() {
     fn normalized(filename: &str) -> String {
         filename
