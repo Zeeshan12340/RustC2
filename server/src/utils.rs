@@ -20,6 +20,7 @@ pub struct ConnectionInfo {
     pub username: String,
     pub os: String,
     pub shared_secret: [u8; 32],
+    pub connected_at: String,
 }
 
 pub async fn handle_importpsh(
@@ -311,29 +312,55 @@ pub async fn handle_command(
 }
 pub async fn handle_list(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
-) -> Vec<String> {
-    let mut list = vec![String::new()];
-    list.push("Active connections:\n".to_string());
-    for (hostname, con) in active_connections.lock().await.iter() {
-        if con.is_pivot {
-            list.push(
-                format!(
-                    "[+] PIVOT: {} (ID {}) username: {}, OS: {}\n",
-                    hostname, con.id, con.username, con.os
-                )
-                .to_string(),
-            );
-        } else {
-            list.push(
-                format!(
-                    "[+] {} (ID {}) username: {}, OS: {}\n",
-                    hostname, con.id, con.username, con.os
-                )
-                .to_string(),
-            );
-        }
+) -> String {
+    use colored::Colorize;
+
+    let connections = active_connections.lock().await;
+    if connections.is_empty() {
+        return format!("{} No active connections.\n", "[-]".red().bold());
     }
-    list
+
+    let mut rows: Vec<&ConnectionInfo> = connections.values().collect();
+    rows.sort_by_key(|c| c.id);
+
+    let host_w = rows.iter().map(|c| c.hostname.len()).max().unwrap_or(7).max(7);
+    let user_w = rows.iter().map(|c| c.username.len()).max().unwrap_or(8).max(8);
+    let os_w = rows.iter().map(|c| c.os.len()).max().unwrap_or(2).max(2);
+
+    let sep_len = 4 + host_w + 2 + user_w + 2 + os_w + 2 + 12;
+    let mut out = String::new();
+
+    out.push_str(&format!(
+        " {:<3}  {:<host_w$}  {:<user_w$}  {:<os_w$}  {}\n",
+        "ID".bold(),
+        "Address".bold(),
+        "Username".bold(),
+        "OS".bold(),
+        "Connected".bold(),
+    ));
+    out.push_str(&format!(" {}\n", "─".repeat(sep_len)));
+
+    for c in rows {
+        let id_col = format!("{:<3}", c.id);
+        let host_col = format!(
+            "{}{:<pad$}",
+            if c.is_pivot { "PIVOT " } else { "" },
+            c.hostname,
+            pad = host_w.saturating_sub(if c.is_pivot { 6 } else { 0 })
+        );
+        let user_col = format!("{:<user_w$}", c.username);
+        let os_col = format!("{:<os_w$}", c.os);
+
+        out.push_str(&format!(
+            " {}  {}  {}  {}  {}\n",
+            id_col.cyan().bold(),
+            if c.is_pivot { host_col.yellow().to_string() } else { host_col },
+            user_col.green(),
+            os_col,
+            c.connected_at.dimmed(),
+        ));
+    }
+    out
 }
 pub async fn handle_upload(
     active_connections: &Arc<Mutex<HashMap<String, ConnectionInfo>>>,
