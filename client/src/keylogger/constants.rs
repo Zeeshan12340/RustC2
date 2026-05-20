@@ -23,5 +23,4 @@ pub const RIDEV_NOLEGACY: c_ulong = 0x00000030;
 pub const RIDEV_INPUTSINK: c_ulong = 0x00000100;
 pub const RID_INPUT: c_ulong = 0x10000003;
 
-//pub const RIM_TYPEHID: c_ulong = 2;
 pub const RIM_TYPEKEYBOARD: c_ulong = 1;

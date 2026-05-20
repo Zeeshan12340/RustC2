@@ -57,8 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let active_connections: Arc<Mutex<HashMap<String, ConnectionInfo>>> = Arc::new(Mutex::new(HashMap::new()));
     let active_connections_clone = active_connections.clone();
 
-    println!("{}",format!("Listening for incoming connections on port {} in background", port));
-    // user interactive commands thread
+    println!("Listening for incoming connections on port {} in background", port);
     thread::spawn(move || {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
@@ -199,7 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     },
                     Err(rustyline::error::ReadlineError::Interrupted) => {
-                        print!("\r{}", format!("{}", "RustC2> "));
+                        print!("\rRustC2> ");
                         std::io::stdout().flush().unwrap();
                     },
                     Err(rustyline::error::ReadlineError::Eof) => {
@@ -213,7 +212,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     });
 
-    // listener and connection handler functionality
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await
     .expect(format!("Failed to bind to port {}!", port).as_str());
     
@@ -289,7 +287,6 @@ pub async fn handle_connection(
 
     let active_connections_clone = Arc::clone(&active_connections);
 
-    // heartbeat check task for each connection
     tokio::spawn(async move {
         let data = [0; 1];
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
@@ -300,8 +297,8 @@ pub async fn handle_connection(
                 Err(_) => {
                     let mut active_connections_lock = active_connections_clone.lock().await;
                     let id = active_connections_lock.get_key_value(&hostname).unwrap().1.id;
-                    println!("{}", format!("\nClient {} disconnected (ID {})\n", hostname, id));
-                    print!("{}", format!("RustC2> "));
+                    println!("\nClient {} disconnected (ID {})\n", hostname, id);
+                    print!("RustC2> ");
                     std::io::stdout().flush().unwrap();
                     active_connections_lock.remove(&hostname);
                     break;
@@ -311,7 +308,7 @@ pub async fn handle_connection(
     });
 
     let id = active_connections.lock().await.get(&hostname_clone).unwrap().id;
-    println!("{}",format!("[+] New client connected: {} (ID {})\n", hostname_clone, id));
-    print!("{}", format!("RustC2> "));
+    println!("[+] New client connected: {} (ID {})\n", hostname_clone, id);
+    print!("RustC2> ");
     std::io::stdout().flush().unwrap();
 }

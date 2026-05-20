@@ -4,17 +4,14 @@ use std::time::{Instant, SystemTime, Duration};
 use std::thread::sleep;
 
 #[cfg(windows)]
-extern crate winapi;
-#[cfg(windows)]
 use winapi::um::debugapi::IsDebuggerPresent;
 
 pub fn check_memory_limit() {
     let mut system = System::new_all();
     system.refresh_memory();
 
-    let total_memory = system.total_memory(); // in kilobytes
-    // Heuristic: If total memory is unusually low, suspect sandboxing
-    if total_memory < 4_000_000_000 { // Less than 512MB
+    let total_memory = system.total_memory();
+    if total_memory < 4_000_000_000 { // Less than 4GB — likely sandboxed
         println!("Program is likely running in a sandboxed environment.");
         exit(1);
     } 

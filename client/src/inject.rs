@@ -175,15 +175,14 @@ impl PE {
 
                 if !export_address.is_null() {
                     let htread = CreateThread(
-                        None, 
-                        0, 
-                        std::mem::transmute(export_address), 
-                        None, 
-                        THREAD_CREATION_FLAGS(0), 
+                        None,
+                        0,
+                        std::mem::transmute(export_address),
+                        None,
+                        THREAD_CREATION_FLAGS(0),
                         None
                     ).expect("[!] Error when calling CreateThread");
 
-                    // Detach the thread so the process continues execution
                     CloseHandle(htread).unwrap();
                 }
 
@@ -251,7 +250,6 @@ impl PE {
 
     fn resolve_import(&mut self, address: *mut c_void) -> Result<(), String> {
         unsafe {
-            // Calculate the number of entries in the import table
             let entries = (self.entry_import_data.Size as usize / size_of::<IMAGE_IMPORT_DESCRIPTOR>()) as u32;
             let img_import_descriptor = address.offset(self.entry_import_data.VirtualAddress as isize) as *mut IMAGE_IMPORT_DESCRIPTOR;
 
@@ -260,16 +258,13 @@ impl PE {
                 let original_first_chunk_rva = (*img_import_descriptor).Anonymous.OriginalFirstThunk;
                 let first_thunk_rva = (*img_import_descriptor).FirstThunk;
 
-                // Break if both RVAs are zero
                 if original_first_chunk_rva == 0 && first_thunk_rva == 0 {
                     break;
                 }
 
-                // Retrieve the DLL name
                 let dll_name = address.offset((*img_import_descriptor).Name as isize) as *const i8;
                 let h_module = LoadLibraryA(PCSTR(dll_name as _)).expect("[!] Error loading library");
 
-                // Initialize thunk size
                 let mut thunk_size = 0;
 
                 let mut func_address: FARPROC;
@@ -277,12 +272,10 @@ impl PE {
                     let original_first_chunk = address.offset(original_first_chunk_rva as isize + thunk_size) as *mut IMAGE_THUNK_DATA64;
                     let first_thunk = address.offset(first_thunk_rva as isize + thunk_size) as *mut IMAGE_THUNK_DATA64;
 
-                    // Break if both function pointers are zero
                     if (*original_first_chunk).u1.Function == 0 && (*first_thunk).u1.Function == 0  {
                         break;
                     }
 
-                    // Check if the function is by ordinal or by name
                     if image_snap_by_ordinal((*original_first_chunk).u1.Ordinal) {
                         let ordinal = image_ordinal((*original_first_chunk).u1.Ordinal);
                         func_address = GetProcAddress(h_module, PCSTR(ordinal as _));
@@ -301,7 +294,6 @@ impl PE {
                         }
                     }
 
-                    // Increment the thunk size
                     thunk_size += size_of::<IMAGE_THUNK_DATA64>() as isize;
                 }
             }

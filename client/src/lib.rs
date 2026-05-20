@@ -15,7 +15,6 @@ mod utils;
 mod inject;
 
 use utils::ImportedScript;
-use windows::{core::*, Win32::UI::WindowsAndMessaging::MessageBoxA};
 use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
 
 #[no_mangle]
@@ -23,16 +22,9 @@ use windows::{Win32::Foundation::*, Win32::System::SystemServices::*};
 extern "system" fn DllMain(dll_module: HINSTANCE, call_reason: u32, _: *mut ()) -> bool {
     match call_reason {
         DLL_PROCESS_ATTACH => attach(),
-        DLL_PROCESS_DETACH => detach(),
         _ => (),
     }
     true
-}
-
-fn detach() {
-    unsafe {
-        MessageBoxA(Some(HWND(std::ptr::null_mut())), s!("GOODBYE!"), s!("hello.dll"), Default::default());
-    }
 }
 
 fn attach() {
